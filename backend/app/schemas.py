@@ -32,6 +32,9 @@ class PublicationOut(BaseModel):
     citations_count: int
     quartile: Optional[str] = None
     percentile_2024: Optional[int] = None
+    # include related objects for frontend
+    authors: List[AuthorOut] = []
+    source: Optional[SourceOut] = None
     source: Optional[SourceOut] = None
     authors: List[AuthorOut] = []
     status: str

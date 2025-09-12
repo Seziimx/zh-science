@@ -4,7 +4,9 @@ import SourceBadge from '../components/SourceBadge'
 import FacetMultiSelect from '../components/FacetMultiSelect'
 import { useI18n, Lang } from '../lib/i18n'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000'
+// Use env if set; otherwise default to production API on Render
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://zh-science-1.onrender.com'
+
 
 type AuthorOut = { id: number; display_name: string }
 type SourceOut = { id: number; name: string; type?: string | null; issn?: string | null; sjr_quartile?: string | null }

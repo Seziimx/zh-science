@@ -3,7 +3,8 @@ import { useState } from 'react'
 import { useI18n, Lang } from '../lib/i18n'
 import { authHeaders, ensureClientId, getToken } from '../lib/auth'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000'
+// Use env if set; otherwise default to production API on Render
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://zh-science-1.onrender.com'
 
 type ValidateResp = {
   found: boolean

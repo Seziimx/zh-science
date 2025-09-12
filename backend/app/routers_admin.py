@@ -338,21 +338,17 @@ def user_publications(user_id: int, db: Session = Depends(get_db), _=Depends(req
         raise HTTPException(status_code=404, detail="User not found")
 
     def norm_expr(col):
-        # lower(remove commas, NBSP, dots, spaces)
         return func.lower(
             func.replace(
                 func.replace(
-                    func.replace(
-                        func.replace(col, ",", ""),
-                        "\u00A0", " "
-                    ),
+                    func.replace(col, "\u00A0", " "),
                     ".", ""
                 ),
                 " ", ""
             )
         )
 
-    norm = (u.full_name or '').replace("\u00A0", " ").strip().lower().replace(",", "").replace(".", "").replace(" ", "")
+    norm = (u.full_name or '').replace("\u00A0", " ").strip().lower().replace(".", "").replace(" ", "")
 
     # Build a distinct set of publication IDs from multiple strategies to avoid empty lists
     pub_ids: set[int] = set()
