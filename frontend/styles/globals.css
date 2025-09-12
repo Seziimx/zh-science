@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: #f7fafc;
+}
+
+html, body, #__next {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-bg);
+}
+
+/* Slightly increase the global scale (similar to 110–120% browser zoom) */
+@layer base {
+  html { font-size: 18px; } /* default ~16px; 18px ≈ 112.5% */
+}
