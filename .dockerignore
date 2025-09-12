@@ -1,0 +1,33 @@
+# Exclude VCS and local env
+.git
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Python venv
+.venv/
+
+# Frontend build/deps (not needed in backend image)
+frontend/node_modules/
+frontend/.next/
+frontend/.turbo/
+frontend/.vercel/
+frontend/coverage/
+
+# Backend caches
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+backend/.coverage
+backend/coverage/
+
+# Runtime data (don’t bake local DB/uploads into image)
+backend/app/uploads/
+backend/*.db
+backend/**/*.db
+backend/*.sqlite
+backend/**/*.sqlite
