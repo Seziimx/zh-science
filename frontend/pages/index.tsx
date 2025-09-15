@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import Head from 'next/head'
+import Link from 'next/link'
 import SourceBadge from '../components/SourceBadge'
 import FacetMultiSelect from '../components/FacetMultiSelect'
 import { useI18n, Lang } from '../lib/i18n'
@@ -303,7 +304,16 @@ export default function HomePage() {
                   <tr key={pub.id} className="odd:bg-white even:bg-gray-50">
                     <td className="px-3 py-2">{startIndex + idx}</td>
                     <td className="px-3 py-2">{pub.year}</td>
-                    <td className="px-3 py-2 whitespace-pre-line break-words w-80">{pub.authors.map(a => a.display_name.replace(/\s*\([^)]*\)\s*/g, '').trim()).join('\n')}</td>
+                    <td className="px-3 py-2 whitespace-pre-line break-words w-80">
+                      {pub.authors.map((a, i) => (
+                        <span key={a.id}>
+                          <Link className="text-blue-600 hover:underline" href={`/author/${a.id}`}>
+                            {a.display_name.replace(/\s*\([^)]*\)\s*/g, '').trim()}
+                          </Link>
+                          {i < pub.authors.length - 1 ? <><br/></> : null}
+                        </span>
+                      ))}
+                    </td>
                     <td className="px-3 py-2 whitespace-normal break-words">{pub.title}</td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2">
@@ -339,7 +349,14 @@ export default function HomePage() {
                 <div className="text-xs text-gray-500">#{startIndex + idx} • {pub.year}</div>
                 <div className="mt-1 text-lg font-semibold">{pub.title}</div>
                 <div className="mt-1 whitespace-pre-line text-sm text-gray-600 break-words">
-                  {pub.authors.map(a => a.display_name.replace(/\s*\([^)]*\)\s*/g, '').trim()).join('\n')}
+                  {pub.authors.map((a, i) => (
+                    <span key={a.id}>
+                      <Link className="text-blue-600 hover:underline" href={`/author/${a.id}`}>
+                        {a.display_name.replace(/\s*\([^)]*\)\s*/g, '').trim()}
+                      </Link>
+                      {i < pub.authors.length - 1 ? <><br/></> : null}
+                    </span>
+                  ))}
                 </div>
                 <div className="mt-1 text-sm flex items-center gap-2">
                   <span>Источник: {pub.source?.name ?? '-'}</span>

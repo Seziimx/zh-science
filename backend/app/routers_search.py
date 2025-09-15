@@ -12,7 +12,7 @@ except Exception:  # pragma: no cover
     Workbook = None  # type: ignore
 
 from .db import get_db
-from .models import Publication, Author, Source
+from .models import Publication, Author, Source, User
 from .schemas import SearchResponse, PageMeta, PublicationOut
 from .config import get_settings
 
@@ -157,6 +157,55 @@ def search_publications(
         meta=PageMeta(page=page, per_page=per_page, total=total, total_pages=total_pages),
         items=[PublicationOut.model_validate(pub) for pub in result],
     )
+
+
+@router.get("/authors/{author_id}")
+def author_detail(author_id: int, db: Session = Depends(get_db)):
+    """Return author card with optional matched user profile and all publications."""
+    # Load author and publications
+    a: Optional[Author] = db.get(Author, author_id)
+    if not a:
+        return {"error": "Author not found"}
+
+    pubs = db.execute(
+        select(Publication)
+        .join(Publication.authors)
+        .options(joinedload(Publication.source), joinedload(Publication.authors))
+        .where(Author.id == author_id, Publication.status == "approved")
+        .order_by(desc(Publication.year), Publication.id)
+    ).scalars().unique().all()
+
+    # Try to match User by normalized name or name_variants (if present)
+    # 1) exact lower equality against full_name
+    candidate = db.execute(
+        select(User).where(func.lower(User.full_name) == func.lower(a.display_name))
+    ).scalars().first()
+
+    # 2) fallback: last name containment
+    if not candidate:
+        parts = [p for p in a.display_name.replace("\u00A0", " ").split() if p]
+        last = parts[0].lower() if parts else None
+        if last:
+            candidate = db.execute(
+                select(User).where(func.lower(User.full_name).like(f"%{last}%"))
+            ).scalars().first()
+
+    user_info = None
+    if candidate:
+        user_info = {
+            "id": candidate.id,
+            "full_name": candidate.full_name,
+            "faculty": candidate.faculty,
+            "department": candidate.department,
+            "position": candidate.position,
+            "degree": candidate.degree,
+        }
+
+    return {
+        "author": {"id": a.id, "display_name": a.display_name},
+        "user": user_info,
+        "publications": [PublicationOut.model_validate(p) for p in pubs],
+    }
 
 
 @router.get("/facets/authors")
