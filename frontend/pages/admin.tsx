@@ -2,10 +2,7 @@ import Head from 'next/head'
 import { useEffect, useMemo, useState } from 'react'
 import { getToken, getRole } from '../lib/auth'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 
-  (typeof window !== 'undefined' && window.location.hostname === 'localhost'
-    ? 'http://127.0.0.1:8000'
-    : 'https://zh-science-api.onrender.com')
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000'
 
 
 type Author = { id: number; display_name: string }
@@ -579,7 +576,8 @@ export default function AdminPage() {
                             <button className="rounded border px-2 py-0.5 text-xs" onClick={async()=>{
                               setPubsUserId(u.id)
                               try {
-                                const res = await fetch(`${API_BASE}/admin/users/${u.id}/publications`, { headers: headers ?? {} })
+                                // Use 'initials' matching to align with the counter (last name + all initials)
+                                const res = await fetch(`${API_BASE}/admin/users/${u.id}/publications?match=initials`, { headers: headers ?? {} })
                                 if (res.ok) setPubsList(await res.json())
                               } catch {}
                             }}>Публикации</button>

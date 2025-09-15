@@ -10,11 +10,21 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+pysqlite:///c:/Users/user/Desktop/zhs/backend/zhubanov.db")
 
+    # Uploads directory (absolute). For Render Disk set to e.g. /var/data/uploads
+    UPLOAD_DIR: str = os.getenv(
+        "UPLOAD_DIR",
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "uploads")),
+    )
+
     # CORS
     CORS_ORIGINS: list[str] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "https://zh-science.vercel.app",
+        # Vercel preview/prod domain used now
+        "https://zh-science-cikrm5tok-seziimxs-projects.vercel.app",
+        # New Vercel preview domain observed
+        "https://zh-science-ipqgt79hd-seziimxs-projects.vercel.app",
     ]
 
     # Pagination defaults

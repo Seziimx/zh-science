@@ -37,7 +37,9 @@ def require_uploader(authorization: str | None = Header(default=None), x_client_
 
 router = APIRouter(prefix="/publications", tags=["publications"])
 
-UPLOAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'uploads'))
+# Resolve uploads directory from settings (supports Render Disk via UPLOAD_DIR env)
+_settings = get_settings()
+UPLOAD_DIR = _settings.UPLOAD_DIR
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 

@@ -4,8 +4,8 @@ import SourceBadge from '../components/SourceBadge'
 import FacetMultiSelect from '../components/FacetMultiSelect'
 import { useI18n, Lang } from '../lib/i18n'
 
-// Use env if set; otherwise default to production API on Render
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://zh-science-1.onrender.com'
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000'
+
 
 
 type AuthorOut = { id: number; display_name: string }
@@ -221,7 +221,20 @@ export default function HomePage() {
               <div className="mt-3 flex gap-2">
                 <button className="rounded bg-primary px-3 py-1 text-white" onClick={()=>{setPage(1);fetchData()}} type="button">{t('search.apply')}</button>
                 <button className="rounded border px-3 py-1" type="button" onClick={()=>{
-                  setYearMin('');setYearMax('');setIssn('');setQuartiles([]);setCitMin('');setCitMax('');setPMin('');setPMax('');setSort('year_desc');setPage(1);fetchData();
+                  // Clear all filters including query and selected authors
+                  setQ('');
+                  setAuthorIds([]);
+                  setYearMin('');
+                  setYearMax('');
+                  setIssn('');
+                  setQuartiles([]);
+                  setCitMin('');
+                  setCitMax('');
+                  setPMin('');
+                  setPMax('');
+                  setSort('year_desc');
+                  setPage(1);
+                  fetchData();
                 }}>{t('search.reset')}</button>
               </div>
               <div className="mt-3">

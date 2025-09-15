@@ -329,9 +329,17 @@ def set_user_active(user_id: int, active: int = Body(embed=True), db: Session = 
 
 
 @router.get("/users/{user_id}/publications", response_model=List[PublicationOut])
-def user_publications(user_id: int, db: Session = Depends(get_db), _=Depends(require_admin)):
-    """Return publications for a user by matching their full_name to authors (strict), not by Publication.user_id.
-    Strategy: strict normalized equality only.
+def user_publications(
+    user_id: int,
+    match: str = Query(default="initials", description="exact | initials | broad"),
+    # 'exact'    -> only exact normalized equality
+    # 'initials' -> exact + last name with all initials present (recommended)
+    # 'broad'    -> initials + name variants + legacy user_id link
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """Return publications for a user by matching their full_name to authors.
+    match parameter controls strictness: exact | initials | broad.
     """
     u = db.get(User, user_id)
     if not u:
@@ -348,12 +356,16 @@ def user_publications(user_id: int, db: Session = Depends(get_db), _=Depends(req
             )
         )
 
-    norm = (u.full_name or '').replace("\u00A0", " ").strip().lower().replace(".", "").replace(" ", "")
+    raw = (u.full_name or '').replace("\u00A0", " ").strip()
+    norm = raw.lower().replace(".", "").replace(",", "").replace(" ", "")
+    parts = [p for p in raw.split() if p]
+    last = parts[0].lower() if parts else ''
+    inits = ''.join([p[0].lower() for p in parts[1:]])
 
-    # Build a distinct set of publication IDs from multiple strategies to avoid empty lists
+    # Build a distinct set of publication IDs
     pub_ids: set[int] = set()
 
-    # A) exact normalized equality
+    # A) exact normalized equality (always applied)
     ids_eq = db.execute(
         select(Publication.id)
         .join(publication_authors, publication_authors.c.publication_id == Publication.id)
@@ -362,36 +374,38 @@ def user_publications(user_id: int, db: Session = Depends(get_db), _=Depends(req
     ).all()
     pub_ids.update([row[0] for row in ids_eq])
 
-    # B) last name + all initials present
-    if last:
-        cond = norm_expr(Author.display_name).like(f"%{last}%")
-        for ch in inits:
-            cond = cond & norm_expr(Author.display_name).like(f"%{ch}%")
-        ids_fb = db.execute(
-            select(Publication.id)
-            .join(publication_authors, publication_authors.c.publication_id == Publication.id)
-            .join(Author, Author.id == publication_authors.c.author_id)
-            .where(cond)
-        ).all()
-        pub_ids.update([row[0] for row in ids_fb])
+    if match in ("initials", "broad"):
+        # B) last name + all initials present
+        if last:
+            cond = norm_expr(Author.display_name).like(f"%{last}%")
+            for ch in inits:
+                cond = cond & norm_expr(Author.display_name).like(f"%{ch}%")
+            ids_fb = db.execute(
+                select(Publication.id)
+                .join(publication_authors, publication_authors.c.publication_id == Publication.id)
+                .join(Author, Author.id == publication_authors.c.author_id)
+                .where(cond)
+            ).all()
+            pub_ids.update([row[0] for row in ids_fb])
 
-    # C) name variants ILIKE OR (broad)
-    variants = _generate_name_variants(u.full_name or '')
-    if variants:
-        conds = [Author.display_name.ilike(f"%{v}%") for v in variants]
-        ids_var = db.execute(
-            select(Publication.id)
-            .join(publication_authors, publication_authors.c.publication_id == Publication.id)
-            .join(Author, Author.id == publication_authors.c.author_id)
-            .where(or_(*conds))
-        ).all()
-        pub_ids.update([row[0] for row in ids_var])
+    if match == "broad":
+        # C) name variants ILIKE OR (broad)
+        variants = _generate_name_variants(u.full_name or '')
+        if variants:
+            conds = [Author.display_name.ilike(f"%{v}%") for v in variants]
+            ids_var = db.execute(
+                select(Publication.id)
+                .join(publication_authors, publication_authors.c.publication_id == Publication.id)
+                .join(Author, Author.id == publication_authors.c.author_id)
+                .where(or_(*conds))
+            ).all()
+            pub_ids.update([row[0] for row in ids_var])
 
-    # D) legacy fallback: publications explicitly linked to user_id
-    ids_link = db.execute(
-        select(Publication.id).where(Publication.user_id == user_id)
-    ).all()
-    pub_ids.update([row[0] for row in ids_link])
+        # D) legacy fallback: publications explicitly linked to user_id
+        ids_link = db.execute(
+            select(Publication.id).where(Publication.user_id == user_id)
+        ).all()
+        pub_ids.update([row[0] for row in ids_link])
 
     if not pub_ids:
         return []

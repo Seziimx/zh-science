@@ -2,10 +2,7 @@ import Head from 'next/head'
 import { useEffect, useMemo, useState } from 'react'
 import { authHeaders } from '../lib/auth'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 
-  (typeof window !== 'undefined' && window.location.hostname === 'localhost'
-    ? 'http://127.0.0.1:8000'
-    : 'https://zh-science-api.onrender.com')
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000'
 
 
 type AuthorOut = { id: number; display_name: string }

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useI18n, useLang } from '../lib/i18n'
 
-// Use env if set; otherwise default to production API on Render
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://zh-science-1.onrender.com'
+// Use env if set; fallback to local for development
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000'
 
 type FacetItem = { id: number; name: string; count: number }
 

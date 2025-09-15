@@ -23,13 +23,15 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title=settings.APP_NAME, debug=settings.DEBUG)
 
+    # Permissive CORS: allow all origins (no credentials). Our API uses token headers, not cookies.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.CORS_ORIGINS,
-        allow_origin_regex=r"http://(localhost|127\.0\.0\.1):3000",
-        allow_credentials=True,
+        allow_origins=["*"],
+        allow_origin_regex=None,
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
+        max_age=600,
     )
 
     app.include_router(search_router)
