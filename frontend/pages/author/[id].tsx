@@ -60,6 +60,10 @@ export default function AuthorPage() {
       {a && (
         <div className="mb-6 rounded border bg-white p-4">
           <h1 className="mb-2 text-2xl font-semibold">{a.display_name}</h1>
+          <div className="mb-3 flex flex-wrap gap-2">
+            <a className="rounded border px-3 py-1 text-sm hover:bg-gray-50" href={`${API_BASE}/search/authors/${a.id}/export?fmt=xlsx`} target="_blank" rel="noreferrer">Скачать XLSX</a>
+            <a className="rounded border px-3 py-1 text-sm hover:bg-gray-50" href={`${API_BASE}/search/authors/${a.id}/export?fmt=csv`} target="_blank" rel="noreferrer">Скачать CSV</a>
+          </div>
           {u ? (
             <div className="text-sm text-gray-700 space-y-1">
               <div><span className="text-gray-500">ФИО (БД):</span> {u.full_name}</div>
