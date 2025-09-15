@@ -39,6 +39,7 @@ export default function NavBar() {
           <nav className="hidden sm:flex items-center gap-4 text-sm text-gray-700">
             <Link href="/" className="hover:text-primary">{t('menu.home')}</Link>
             <Link href="/stats" className="hover:text-primary">{t('menu.stats')}</Link>
+            <Link href="/authors" className="hover:text-primary">Авторы</Link>
             {mounted && role !== 'guest' && (
               <Link href="/add" className="hover:text-primary">{t('common.upload')}</Link>
             )}

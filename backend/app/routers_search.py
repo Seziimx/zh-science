@@ -159,6 +159,24 @@ def search_publications(
     )
 
 
+def _name_variants(full_name: str) -> list[str]:
+    parts = [p for p in (full_name or "").replace("\u00A0", " ").strip().split() if p]
+    if not parts:
+        return []
+    last = parts[0]
+    initials_compact = "".join([f"{p[0]}." for p in parts[1:]])  # S.S.
+    initials_spaced = " ".join([f"{p[0]}." for p in parts[1:]])  # S. S.
+    c: set[str] = set()
+    c.add(full_name)
+    if initials_compact:
+        c.add(f"{last} {initials_compact}")
+        c.add(f"{initials_compact} {last}")
+    if initials_spaced:
+        c.add(f"{last} {initials_spaced}")
+        c.add(f"{initials_spaced} {last}")
+    return sorted({x.strip() for x in c if x.strip()})
+
+
 @router.get("/authors/{author_id}")
 def author_detail(author_id: int, db: Session = Depends(get_db)):
     """Return author card with optional matched user profile and all publications."""
@@ -175,20 +193,41 @@ def author_detail(author_id: int, db: Session = Depends(get_db)):
         .order_by(desc(Publication.year), Publication.id)
     ).scalars().unique().all()
 
-    # Try to match User by normalized name or name_variants (if present)
-    # 1) exact lower equality against full_name
-    candidate = db.execute(
+    # Try to match User by equality, last name, or name_variants
+    candidate: User | None = db.execute(
         select(User).where(func.lower(User.full_name) == func.lower(a.display_name))
     ).scalars().first()
 
-    # 2) fallback: last name containment
-    if not candidate:
-        parts = [p for p in a.display_name.replace("\u00A0", " ").split() if p]
-        last = parts[0].lower() if parts else None
-        if last:
-            candidate = db.execute(
-                select(User).where(func.lower(User.full_name).like(f"%{last}%"))
-            ).scalars().first()
+    # 2) fallback: last name containment to shortlist candidates
+    shortlist: list[User] = []
+    parts = [p for p in a.display_name.replace("\u00A0", " ").split() if p]
+    last = parts[0].lower() if parts else None
+    if not candidate and last:
+        shortlist = db.execute(
+            select(User).where(func.lower(User.full_name).like(f"%{last}%"))
+        ).scalars().all()
+        # If only one candidate -> take it
+        if len(shortlist) == 1:
+            candidate = shortlist[0]
+
+    # 3) variants check: does author's display name contain any of user's variants
+    if not candidate and shortlist:
+        an = a.display_name.lower()
+        for u in shortlist:
+            variants: list[str] = []
+            try:
+                if u.name_variants:
+                    import json
+                    vv = json.loads(u.name_variants)
+                    if isinstance(vv, list):
+                        variants.extend([str(x) for x in vv])
+            except Exception:
+                pass
+            if not variants:
+                variants = _name_variants(u.full_name)
+            if any(v.lower() in an for v in variants):
+                candidate = u
+                break
 
     user_info = None
     if candidate:
@@ -206,6 +245,86 @@ def author_detail(author_id: int, db: Session = Depends(get_db)):
         "user": user_info,
         "publications": [PublicationOut.model_validate(p) for p in pubs],
     }
+
+
+@router.get("/authors/{author_id}/export")
+def author_export(
+    author_id: int,
+    fmt: str = Query(default="csv", description="csv|xlsx"),
+    db: Session = Depends(get_db),
+):
+    """Export all approved publications of the author to CSV/XLSX."""
+    a: Optional[Author] = db.get(Author, author_id)
+    if not a:
+        def iter_err():
+            yield "Author not found"
+        return StreamingResponse(iter_err(), media_type="text/plain")
+
+    rows = db.execute(
+        select(Publication)
+        .join(Publication.authors)
+        .options(joinedload(Publication.source), joinedload(Publication.authors))
+        .where(Author.id == author_id, Publication.status == "approved")
+        .order_by(desc(Publication.year), Publication.id)
+    ).scalars().unique().all()
+
+    if fmt.lower() == "csv":
+        def iter_csv():
+            header = [
+                "id","year","title","authors","source","issn","doi","scopus_url","citations","quartile","percentile_2024","pdf_url"
+            ]
+            yield ",".join(header) + "\n"
+            for p in rows:
+                authors_str = "; ".join([au.display_name for au in p.authors])
+                source_name = p.source.name if p.source else ""
+                issn_val = p.source.issn if p.source else ""
+                vals = [
+                    str(p.id), str(p.year or ''), p.title.replace('"','""'), authors_str.replace('"','""'), source_name.replace('"','""'),
+                    str(issn_val or ''), str(p.doi or ''), str(p.scopus_url or ''), str(p.citations_count or 0), str(p.quartile or ''), str(p.percentile_2024 or ''), str(p.pdf_url or ''),
+                ]
+                def q(v: str) -> str:
+                    return f'"{v}"' if ("," in v or "\n" in v or '"' in v) else v
+                yield ",".join([q(v) for v in vals]) + "\n"
+        filename = f"author_{author_id}_export.csv"
+        return StreamingResponse(iter_csv(), media_type="text/csv", headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+    if fmt.lower() == "xlsx":
+        if Workbook is None:
+            def iter_err():
+                yield "XLSX export not available"
+            return StreamingResponse(iter_err(), media_type="text/plain")
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Author"
+        header = ["id","year","title","authors","source","issn","doi","scopus_url","citations","quartile","percentile_2024","pdf_url"]
+        ws.append(header)
+        for p in rows:
+            authors_str = "; ".join([au.display_name for au in p.authors])
+            source_name = p.source.name if p.source else ""
+            issn_val = p.source.issn if p.source else ""
+            ws.append([
+                p.id, p.year or '', p.title, authors_str, source_name,
+                issn_val or '', p.doi or '', p.scopus_url or '', p.citations_count or 0, p.quartile or '', p.percentile_2024 or '', p.pdf_url or ''
+            ])
+        # Autosize columns
+        for col in ws.columns:
+            max_len = 10
+            col_letter = col[0].column_letter
+            for cell in col:
+                try:
+                    max_len = max(max_len, len(str(cell.value or "")))
+                except Exception:
+                    pass
+            ws.column_dimensions[col_letter].width = min(max_len + 2, 60)
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        filename = f"author_{author_id}_export.xlsx"
+        return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+    def iter_fallback():
+        yield "Unsupported format"
+    return StreamingResponse(iter_fallback(), media_type="text/plain")
 
 
 @router.get("/facets/authors")
