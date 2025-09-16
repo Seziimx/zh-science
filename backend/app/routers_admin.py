@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, Header, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Header, Query, Body, UploadFile, File
 from sqlalchemy.orm import Session, joinedload, aliased
 from sqlalchemy import select, desc, asc, or_, func
 import os
@@ -517,6 +517,41 @@ def delete_publication(pub_id: int, db: Session = Depends(get_db), _=Depends(req
     db.delete(pub)
     db.commit()
     return {"ok": True}
+
+# -----------------------------
+# Import faculty/users from Excel (upload in browser)
+# -----------------------------
+
+@router.post("/import/faculty")
+def import_faculty_excel(
+    authorization: Optional[str] = Header(default=None),
+    file: UploadFile = File(..., description="Excel file with faculty/users (e.g., факультет.xlsx)"),
+):
+    """Upload an Excel file and import faculty/department/users to DB.
+    Auth: pass admin token in Authorization header (raw token or 'Bearer <token>').
+    """
+    require_admin(authorization)  # raises 401 if invalid
+
+    # Save to a temporary file under uploads
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    temp_path = os.path.join(UPLOAD_DIR, f"_faculty_import_{file.filename}")
+    with open(temp_path, "wb") as out:
+        out.write(file.file.read())
+
+    # Run importer
+    try:
+        try:
+            from scripts.import_faculty_excel import import_faculty_from_excel  # type: ignore
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Importer not available: {e}")
+
+        res = import_faculty_from_excel(temp_path)
+        return {"status": "ok", **res}
+    finally:
+        try:
+            os.remove(temp_path)
+        except Exception:
+            pass
 
 
 @router.patch("/publications/{pub_id}", response_model=PublicationOut)
