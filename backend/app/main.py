@@ -96,7 +96,7 @@ def create_app() -> FastAPI:
                     conn.exec_driver_sql("ALTER TABLE users ADD COLUMN IF NOT EXISTS name_variants TEXT")
         except Exception as e:
             print(f"[startup] Migration warning: {e}")
-        # Optional: import sources from Excel once if file exists
+        # Optional: import sources/publications from Excel once if file exists
         excel_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "zhubanov_scopus_issn.xlsx"))
         # also check project root
         if not os.path.exists(excel_path):
@@ -115,6 +115,18 @@ def create_app() -> FastAPI:
             except Exception as e:
                 # Do not crash app on import errors
                 print(f"[startup] Excel import skipped due to error: {e}")
+
+        # Optional: import faculty/users from Excel if file exists (helps first deploys)
+        fac_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "факультет.xlsx"))
+        if not os.path.exists(fac_path):
+            fac_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "факультет.xlsx"))
+        if os.path.exists(fac_path):
+            try:
+                from scripts.import_faculty_excel import import_faculty_from_excel  # type: ignore
+                res = import_faculty_from_excel(fac_path)
+                print(f"[startup] Faculty import: {res}")
+            except Exception as e:
+                print(f"[startup] Faculty import skipped due to error: {e}")
 
     return app
 
