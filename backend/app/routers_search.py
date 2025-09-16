@@ -422,32 +422,60 @@ def author_export(
 
 @router.get("/facets/faculties")
 def facets_faculties(limit: int = 100, db: Session = Depends(get_db)):
-    """Return list of faculties from Users with counts of users per faculty."""
+    """Return list of faculties from Users with de-duplicated counts per faculty.
+    Count uses DISTINCT normalized full_name to avoid duplicates from import.
+    """
+    def norm_expr(col):
+        return func.lower(
+            func.replace(
+                func.replace(
+                    func.replace(col, "\u00A0", " "),
+                    ",", ""
+                ),
+                ".", ""
+            )
+        )
     rows = db.execute(
-        select(User.faculty, func.count(User.id))
+        select(
+            User.faculty,
+            func.count(func.distinct(norm_expr(User.full_name)))
+        )
         .where(
             User.faculty != "",
             User.faculty.is_not(None),
             func.lower(User.faculty) != "nan",
         )
         .group_by(User.faculty)
-        .order_by(desc(func.count(User.id)))
+        .order_by(desc(func.count(func.distinct(norm_expr(User.full_name)))))
         .limit(limit)
     ).all()
     return [{"name": r[0], "count": int(r[1])} for r in rows]
 
 @router.get("/facets/departments")
 def facets_departments(limit: int = 100, db: Session = Depends(get_db)):
-    """Return list of departments from Users with counts of users per department."""
+    """Return list of departments from Users with de-duplicated counts per department."""
+    def norm_expr(col):
+        return func.lower(
+            func.replace(
+                func.replace(
+                    func.replace(col, "\u00A0", " "),
+                    ",", ""
+                ),
+                ".", ""
+            )
+        )
     rows = db.execute(
-        select(User.department, func.count(User.id))
+        select(
+            User.department,
+            func.count(func.distinct(norm_expr(User.full_name)))
+        )
         .where(
             User.department != "",
             User.department.is_not(None),
             func.lower(User.department) != "nan",
         )
         .group_by(User.department)
-        .order_by(desc(func.count(User.id)))
+        .order_by(desc(func.count(func.distinct(norm_expr(User.full_name)))))
         .limit(limit)
     ).all()
     return [{"name": r[0], "count": int(r[1])} for r in rows]
@@ -679,7 +707,7 @@ def faculty_export(
     if fmt.lower() == "csv":
         def iter_csv():
             header = [
-                "id","year","title","authors","source","issn","doi","scopus_url",
+                "year","title","authors","source","issn","doi","scopus_url",
                 "citations","quartile","percentile_2024","pdf_url","faculty","department"
             ]
             yield ",".join(header) + "\n"
@@ -695,7 +723,7 @@ def faculty_export(
                 source_name = p.source.name if p.source else ""
                 issn_val = p.source.issn if p.source else ""
                 vals = [
-                    str(p.id), str(p.year or ''), p.title.replace('"','""'), authors_str.replace('"','""'), source_name.replace('"','""'),
+                    str(p.year or ''), p.title.replace('"','""'), authors_str.replace('"','""'), source_name.replace('"','""'),
                     str(issn_val or ''), str(p.doi or ''), str(p.scopus_url or ''), str(p.citations_count or 0), str(p.quartile or ''), str(p.percentile_2024 or ''), str(p.pdf_url or ''),
                     faculty,
                     faculty if scope == "department" else "",
@@ -720,7 +748,7 @@ def faculty_export(
     ws = wb.active
     ws.title = faculty[:31] or "Faculty"
     header = [
-        "id","year","title","authors","source","issn","doi","scopus_url",
+        "year","title","authors","source","issn","doi","scopus_url",
         "citations","quartile","percentile_2024","pdf_url","faculty","department"
     ]
     ws.append(header)
@@ -736,7 +764,7 @@ def faculty_export(
         source_name = p.source.name if p.source else ""
         issn_val = p.source.issn if p.source else ""
         ws.append([
-            p.id, p.year or '', p.title, authors_str, source_name,
+            p.year or '', p.title, authors_str, source_name,
             issn_val or '', p.doi or '', p.scopus_url or '', p.citations_count or 0, p.quartile or '', p.percentile_2024 or '', p.pdf_url or '',
             faculty,
             faculty if scope == "department" else "",
