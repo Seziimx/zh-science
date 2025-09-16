@@ -554,6 +554,42 @@ def import_faculty_excel(
             pass
 
 
+@router.post("/import/publications")
+def import_publications_excel(
+    authorization: Optional[str] = Header(default=None),
+    file: UploadFile = File(..., description="Scopus Excel with Sources/Publications (e.g., zhubanov_scopus_issn.xlsx)"),
+):
+    """Upload Scopus Excel and import Sources and Publications on the server.
+    Auth via `Authorization: Bearer <ADMIN_TOKEN>`.
+    """
+    require_admin(authorization)
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    temp_path = os.path.join(UPLOAD_DIR, f"_pubs_import_{file.filename}")
+    with open(temp_path, "wb") as out:
+        out.write(file.file.read())
+
+    try:
+        try:
+            from scripts.import_excel import load_sources_from_excel, load_publications_from_excel  # type: ignore
+            from app.db import SessionLocal
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Importer not available: {e}")
+
+        db = SessionLocal()
+        try:
+            load_sources_from_excel(db, temp_path)
+            created = load_publications_from_excel(db, temp_path)
+        finally:
+            db.close()
+        return {"status": "ok", "publications_imported": created}
+    finally:
+        try:
+            os.remove(temp_path)
+        except Exception:
+            pass
+
+
 @router.patch("/publications/{pub_id}", response_model=PublicationOut)
 def update_publication(
     pub_id: int,
