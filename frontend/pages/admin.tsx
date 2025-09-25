@@ -339,8 +339,8 @@ export default function AdminPage() {
                           <div className="flex flex-col gap-1">
                             <div className="flex items-start gap-2">
                               <span className="whitespace-pre-wrap break-words hyphens-auto">{p.source?.name ?? '-'}</span>
-                              {p.source?.url && (
-                                <a className="text-blue-700 underline" href={p.source.url} target="_blank" rel="noreferrer">URL</a>
+                              {p.url && (
+                                <a className="text-blue-700 underline" href={p.url} target="_blank" rel="noreferrer">URL</a>
                               )}
                             </div>
                           </div>
