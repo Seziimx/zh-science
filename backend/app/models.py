@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import List, Optional
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, ForeignKey, Table, DateTime, Text
+from sqlalchemy import Column, String, Integer, ForeignKey, Table, DateTime, Text, Date
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.sql import func
 from .db import Base
@@ -34,14 +34,23 @@ class Publication(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     year: Mapped[int] = mapped_column(Integer, index=True)
+    published_date: Mapped[Optional[datetime]] = mapped_column(Date, nullable=True, index=True)
     title: Mapped[str] = mapped_column(Text, index=True)
     doi: Mapped[Optional[str]] = mapped_column(String(255), index=True, nullable=True)
     pdf_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    # Generic external URL (journal page, Kokson link, etc.)
+    url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     scopus_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    # Generic language for publication (e.g., 'kz', 'ru', 'en')
+    language: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
     citations_count: Mapped[int] = mapped_column(Integer, default=0, index=True)
     quartile: Mapped[Optional[str]] = mapped_column(String(8), index=True, nullable=True)  # e.g., Q1..Q4
     percentile_2024: Mapped[Optional[int]] = mapped_column(Integer, index=True, nullable=True)
+    # Document type for Kokson/Articles (e.g., KOKSON list, journal, monograph, etc.)
+    doc_type: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
+    # Number of main authors at the start of the authors list; the rest are coauthors
+    main_authors_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
 
     # Uploader tracking (no registration: session-based client id and role)
     uploader_id: Mapped[Optional[str]] = mapped_column(String(64), index=True, nullable=True)
@@ -64,6 +73,8 @@ class Publication(Base):
     )
 
     status: Mapped[str] = mapped_column(String(16), default="approved", index=True)  # pending|approved|rejected
+    # Source of upload: scopus|kokson|manual
+    upload_source: Mapped[Optional[str]] = mapped_column(String(16), nullable=True, index=True)
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # admin rejection note or other
     user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
 
@@ -77,6 +88,10 @@ class Author(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     display_name: Mapped[str] = mapped_column(String(255), index=True)
     normalized_name: Mapped[Optional[str]] = mapped_column(String(255), index=True, nullable=True)
+    faculty: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
+    department: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    user: Mapped[Optional["User"]] = relationship("User")
 
     publications: Mapped[List[Publication]] = relationship(
         "Publication",
@@ -122,10 +137,14 @@ class User(Base):
     department: Mapped[str] = mapped_column(String(128), index=True)
     login: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+    # For imported users: optional initial password to show to admin/self; do NOT export
+    initial_password: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     name_variants: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON-encoded list of string variants
     position: Mapped[str] = mapped_column(String(64), index=True)  # e.g., Оқытушы, Кафедра меңгерушісі, Декан, Ғылымға жауапты, Админ
     degree: Mapped[str] = mapped_column(String(128), default="", index=True)
     active: Mapped[int] = mapped_column(Integer, default=1, index=True)
+    # How the user was created: 'admin' | 'import' | 'api'
+    created_source: Mapped[Optional[str]] = mapped_column(String(16), nullable=True, index=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

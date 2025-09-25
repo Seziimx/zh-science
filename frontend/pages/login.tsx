@@ -7,7 +7,7 @@ import { ensureClientId, setAuth } from '../lib/auth'
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000'
 
 
-type LoginResp = { role: 'user'|'admin'; token: string }
+type LoginResp = { role: 'user'|'admin'; token: string; user_id?: number|null }
 
 export default function LoginPage() {
   const t = useI18n('ru')
@@ -35,7 +35,7 @@ export default function LoginPage() {
         }
       }
       const data: LoginResp = await res.json()
-      setAuth(data.role, data.token)
+      setAuth(data.role, data.token, (data.user_id ?? null))
       ensureClientId()
       window.location.href = '/'
     } catch (e: any) {

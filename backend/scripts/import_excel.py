@@ -23,7 +23,12 @@ ALIASES = {
 }
 
 PUB_ALIASES = {
-    'authors': {'автор(ы)', 'автор', 'авторы'},
+    'authors': {
+        'автор(ы)', 'автор', 'авторы',
+        'author', 'authors',
+        'author full names', 'authors full names', 'author full name', 'full names of authors',
+        'полные имена авторов', 'автор полные имена', 'автор полное имя',
+    },
     'title': {'title', 'название', 'название документа'},
     'year': {'year', 'год'},
     'source_name': {'название источника', 'source name'},
@@ -34,6 +39,7 @@ PUB_ALIASES = {
     'scopus_url': {'ссылка', 'link', 'scopus', 'scopus link'},
     'quartile': {'quartile', 'квартиль'},
     'percentile_2024': {'percentile_2024', 'процентиль 2024', 'percentile', 'percentile2024'},
+    'note': {'note', 'comment', 'comments', 'примечание', 'комментарий', 'ескерту', 'ескертуi', 'ескертуі', 'ескертулер'},
 }
 
 
@@ -51,6 +57,8 @@ def norm_pub_col(col: str) -> str:
         if c in names:
             return key
     # Fuzzy fallbacks for common variants
+    if ('full' in c and 'author' in c) or ('полные' in c and 'автор' in c):
+        return 'authors'
     if 'автор' in c:
         return 'authors'
     if 'название источ' in c:
@@ -120,10 +128,11 @@ def load_sources_from_excel(db: Session, excel_path: str) -> int:
         print("[import] Sources sheet not detected explicitly — using the first sheet")
 
     created = 0
+    updated_cnt = 0
     for _, row in df.iterrows():
         name = str(row.get('name') or '').strip()
         issn = str(row.get('issn') or '').strip()
-        quartile = str(row.get('quartile') or '').strip() or None
+        # Ignore quartile from Excel for sources
         src_type = str(row.get('type') or '').strip().lower() or 'journal'
         if not name and not issn:
             continue
@@ -136,9 +145,7 @@ def load_sources_from_excel(db: Session, excel_path: str) -> int:
         existing = db.execute(stmt).scalars().first()
         if existing:
             updated = False
-            if quartile and (existing.sjr_quartile or '').strip() != quartile:
-                existing.sjr_quartile = quartile
-                updated = True
+            # Do not import quartile for sources
             if src_type and (existing.type or '').strip() != src_type:
                 existing.type = src_type
                 updated = True
@@ -149,7 +156,6 @@ def load_sources_from_excel(db: Session, excel_path: str) -> int:
         src = Source(
             name=name or (issn or 'unknown'),
             issn=issn or None,
-            sjr_quartile=quartile,
             type=src_type
         )
         db.add(src)
@@ -181,6 +187,7 @@ def load_publications_from_excel(db: Session, excel_path: str) -> int:
         return 0
 
     created = 0
+    updated_cnt = 0
     for _, row in df.iterrows():
         title = str(row.get('title') or '').strip()
         if not title:
@@ -192,21 +199,47 @@ def load_publications_from_excel(db: Session, excel_path: str) -> int:
         if not year:
             continue
 
-        doi = str(row.get('doi') or '').strip() or None
-        issn = str(row.get('issn') or '').strip() or None
-        source_name = str(row.get('source_name') or row.get('name') or '').strip() or None
-        quartile = str(row.get('quartile') or '').strip() or None
-        pdf_cell = str(row.get('pdf_url') or '').strip() or None
+        # Safe getters that handle duplicate-named columns (Series)
+        def _cell(name: str) -> str:
+            val = row.get(name)
+            if isinstance(val, pd.Series):
+                # choose the longest non-empty string
+                vals = [str(x).strip() for x in val if pd.notna(x) and str(x).strip().lower() != 'nan']
+                return max(vals, key=len) if vals else ''
+            if val is None or (isinstance(val, float) and pd.isna(val)):
+                return ''
+            s = str(val).strip()
+            return '' if s.lower() == 'nan' else s
+
+        doi = _cell('doi') or None
+        issn = _cell('issn') or None
+        source_name = (_cell('source_name') or _cell('name')) or None
+        pdf_cell = _cell('pdf_url') or None
         pdf_url = pdf_cell if looks_like_pdf(pdf_cell) else None
-        scopus_url = str(row.get('scopus_url') or '').strip() or None
+        scopus_url = _cell('scopus_url') or None
+        note_val = _cell('note') or None
+        # Optional quartile / percentile for Scopus
+        q_raw = (_cell('quartile') or '').strip().upper()
+        quartile_val = q_raw if q_raw in {'Q1','Q2','Q3','Q4'} else None
+        p_raw = _cell('percentile_2024')
         try:
-            citations = int(row.get('citations')) if pd.notna(row.get('citations')) else 0
+            percentile_val = int(p_raw) if p_raw not in (None, '') else None
+            if percentile_val is not None:
+                if percentile_val < 0: percentile_val = 0
+                if percentile_val > 100: percentile_val = 100
+        except Exception:
+            percentile_val = None
+        try:
+            c_raw = row.get('citations')
+            if isinstance(c_raw, pd.Series):
+                c_vals = [x for x in c_raw if pd.notna(x)]
+                c_val = c_vals[0] if c_vals else 0
+            else:
+                c_val = c_raw
+            citations = int(c_val) if pd.notna(c_val) else 0
         except Exception:
             citations = 0
-        try:
-            percentile_2024 = int(row.get('percentile_2024')) if pd.notna(row.get('percentile_2024')) else None
-        except Exception:
-            percentile_2024 = None
+        # percentile_2024 already parsed above
 
         # upsert source
         src = None
@@ -214,7 +247,8 @@ def load_publications_from_excel(db: Session, excel_path: str) -> int:
         if source_name_norm:
             src = db.execute(select(Source).where(Source.name == source_name_norm)).scalars().first()
         if not src and source_name_norm:
-            src = Source(name=source_name_norm, issn=issn or None, sjr_quartile=quartile)
+            # Do not set quartile for sources here; keep creation minimal
+            src = Source(name=source_name_norm, issn=issn or None, type=(row.get('type') or None))
             db.add(src)
             db.flush()
         elif src:
@@ -222,14 +256,17 @@ def load_publications_from_excel(db: Session, excel_path: str) -> int:
             if (issn or None) and (src.issn or None) != issn:
                 src.issn = issn
                 changed = True
-            if (quartile or None) and (src.sjr_quartile or None) != quartile:
-                src.sjr_quartile = quartile
-                changed = True
+            # Do not import quartile for sources
             if changed:
                 db.add(src)
 
         # Authors: take strictly from 'authors' column; split by ';' or newline only (no cleanup)
-        authors_cell = str(row.get('authors') or '').strip()
+        a_raw = row.get('authors')
+        if isinstance(a_raw, pd.Series):
+            a_vals = [str(x).strip() for x in a_raw if pd.notna(x) and str(x).strip().lower() != 'nan']
+            authors_cell = max(a_vals, key=len) if a_vals else ''
+        else:
+            authors_cell = str(a_raw or '').strip()
         author_names = parse_authors(authors_cell)
         author_objs = []
         for nm in author_names:
@@ -245,7 +282,32 @@ def load_publications_from_excel(db: Session, excel_path: str) -> int:
         dup_q = select(Publication).where(Publication.title == title, Publication.year == year)
         if src:
             dup_q = dup_q.where(Publication.source_id == src.id)
-        if db.execute(dup_q).scalars().first():
+        existing = db.execute(dup_q).scalars().first()
+        if existing:
+            # Update key fields and mark as scopus
+            changed = False
+            if doi and existing.doi != doi:
+                existing.doi = doi; changed = True
+            if looks_like_pdf(pdf_url) and existing.pdf_url != pdf_url:
+                existing.pdf_url = pdf_url; changed = True
+            if scopus_url and existing.scopus_url != scopus_url:
+                existing.scopus_url = scopus_url; changed = True
+            # Update quartile / percentile when provided
+            if quartile_val is not None and (existing.quartile or None) != quartile_val:
+                existing.quartile = quartile_val; changed = True
+            if (existing.citations_count or 0) != citations:
+                existing.citations_count = citations; changed = True
+            if percentile_val is not None and (existing.percentile_2024 or None) != percentile_val:
+                existing.percentile_2024 = percentile_val; changed = True
+            if (existing.upload_source or None) != 'scopus':
+                existing.upload_source = 'scopus'; changed = True
+            if note_val and (existing.note or None) != note_val:
+                existing.note = note_val; changed = True
+            if existing.status != 'approved':
+                existing.status = 'approved'; changed = True
+            if changed:
+                db.add(existing)
+                updated_cnt += 1
             continue
 
         pub = Publication(
@@ -255,19 +317,21 @@ def load_publications_from_excel(db: Session, excel_path: str) -> int:
             pdf_url=pdf_url,
             scopus_url=scopus_url,
             citations_count=citations,
-            quartile=quartile,
-            percentile_2024=percentile_2024,
             source=src,
             status='approved',
+            upload_source='scopus',
+            note=note_val or None,
+            quartile=quartile_val,
+            percentile_2024=percentile_val,
         )
         db.add(pub)
         db.flush()
         pub.authors = author_objs
         created += 1
 
-    if created:
+    if created or updated_cnt:
         db.commit()
-    print(f"Publications imported: {created}")
+    print(f"Publications imported: {created}, updated: {updated_cnt}")
     return created
 
 

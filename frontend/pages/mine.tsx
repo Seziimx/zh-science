@@ -1,6 +1,8 @@
 import Head from 'next/head'
+import { useRouter } from 'next/router'
 import { useEffect, useMemo, useState } from 'react'
 import { authHeaders } from '../lib/auth'
+import SourceBadge from '../components/SourceBadge'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000'
 
@@ -14,6 +16,7 @@ type Publication = {
   title: string
   doi?: string | null
   scopus_url?: string | null
+  url?: string | null
   pdf_url?: string | null
   citations_count: number
   quartile?: string | null
@@ -22,6 +25,8 @@ type Publication = {
   authors: AuthorOut[]
   status: 'pending' | 'approved' | 'rejected'
   note?: string | null
+  upload_source?: string | null
+  doc_type?: string | null
 }
 
 function StatusBadge({ status }: { status: Publication['status'] | string }) {
@@ -35,6 +40,7 @@ function StatusBadge({ status }: { status: Publication['status'] | string }) {
 }
 
 export default function MyPublicationsPage() {
+  const router = useRouter()
   const [items, setItems] = useState<Publication[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -47,6 +53,7 @@ export default function MyPublicationsPage() {
   const [title, setTitle] = useState('')
   const [year, setYear] = useState<number | ''>('')
   const [doi, setDoi] = useState('')
+  const [url, setUrl] = useState('')
   const [citations, setCitations] = useState<number | ''>('')
   const [quartile, setQuartile] = useState('')
   const [percentile, setPercentile] = useState<number | ''>('')
@@ -70,11 +77,32 @@ export default function MyPublicationsPage() {
 
   useEffect(() => { load() }, [])
 
+  // Show toast after redirect from Add page (?submitted=1)
+  useEffect(() => {
+    if (!router || !router.isReady) return
+    const q = router.query
+    if (q && q.submitted === '1') {
+      setToast('Заявка отправлена. Публикация на модерации.')
+      setTimeout(()=>setToast(null), 2500)
+      // remove the query param without adding history entry
+      const { submitted, ...rest } = q
+      router.replace({ pathname: router.pathname, query: rest }, undefined, { shallow: true })
+    }
+  }, [router.isReady])
+
+  const scopusItems = useMemo(() => {
+    return items.filter(p => (p.upload_source === 'scopus') || (!!p.scopus_url))
+  }, [items])
+  const articleItems = useMemo(() => {
+    return items.filter(p => (p.upload_source === 'kokson') || (!!p.doc_type && (p.upload_source !== 'scopus')))
+  }, [items])
+
   function openEdit(p: Publication) {
     setEditId(p.id)
     setTitle(p.title)
     setYear(p.year)
     setDoi(p.doi || '')
+    setUrl(p.url || '')
     setCitations(p.citations_count)
     setQuartile(p.quartile || '')
     setPercentile(p.percentile_2024 ?? '')
@@ -91,6 +119,7 @@ export default function MyPublicationsPage() {
       if (title.trim() !== editItem.title) fd.set('title', title.trim())
       if (year !== '' && year !== editItem.year) fd.set('year', String(year))
       if ((doi || '') !== (editItem.doi || '')) fd.set('doi', doi)
+      if ((url || '') !== (editItem.url || '')) fd.set('url', url)
       if (citations !== '' && citations !== editItem.citations_count) fd.set('citations_count', String(citations))
       if ((quartile || '') !== (editItem.quartile || '')) fd.set('quartile', quartile)
       if (percentile !== '' && percentile !== (editItem.percentile_2024 ?? '')) fd.set('percentile_2024', String(percentile))
@@ -129,57 +158,128 @@ export default function MyPublicationsPage() {
 
         {error && <div className="mb-3 text-sm text-red-700">{error}</div>}
 
-        <div className="rounded border bg-white">
-          <table className="min-w-full text-sm table-auto">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-3 py-2 text-left">ID</th>
-                <th className="px-3 py-2 text-left">Год</th>
-                <th className="px-3 py-2 text-left">Статус</th>
-                <th className="px-3 py-2 text-left">Название</th>
-                <th className="px-3 py-2 text-left">Авторы</th>
-                <th className="px-3 py-2 text-left">Источник</th>
-                <th className="px-3 py-2 text-left">DOI</th>
-                <th className="px-3 py-2 text-left">Scopus</th>
-                <th className="px-3 py-2 text-left">Цит.</th>
-                <th className="px-3 py-2 text-left">Квартиль</th>
-                <th className="px-3 py-2 text-left">Perc. 2024</th>
-                <th className="px-3 py-2 text-left">Файл</th>
-                <th className="px-3 py-2 text-left">Примечание</th>
-                <th className="px-3 py-2 text-left">Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading && (
-                <tr><td className="px-3 py-2" colSpan={7}>Загрузка…</td></tr>
-              )}
-              {!loading && items.length === 0 && (
-                <tr><td className="px-3 py-2" colSpan={7}>Нет данных</td></tr>
-              )}
-              {!loading && items.map(p => (
-                <tr key={p.id} className={`odd:bg-white even:bg-gray-50 ${highlightId===p.id ? 'animate-pulse bg-green-50' : ''}`}>
-                  <td className="px-3 py-2">{p.id}</td>
-                  <td className="px-3 py-2">{p.year}</td>
-                  <td className="px-3 py-2"><StatusBadge status={p.status} /></td>
-                  <td className="px-3 py-2 max-w-[420px] break-words">{p.title}</td>
-                  <td className="px-3 py-2 whitespace-pre-line break-words w-64">{p.authors.map(a=>a.display_name).join('\n')}</td>
-                  <td className="px-3 py-2">{p.source?.name ?? '-'}</td>
-                  <td className="px-3 py-2 text-blue-700">{p.doi ? <a className="underline" href={`https://doi.org/${p.doi}`} target="_blank" rel="noreferrer">{p.doi}</a> : '-'}</td>
-                  <td className="px-3 py-2 text-blue-700">{p.scopus_url ? <a className="underline" href={p.scopus_url} target="_blank" rel="noreferrer">Scopus</a> : '-'}</td>
-                  <td className="px-3 py-2">{p.citations_count}</td>
-                  <td className="px-3 py-2">{p.quartile ?? '-'}</td>
-                  <td className="px-3 py-2">{p.percentile_2024 ?? '-'}</td>
-                  <td className="px-3 py-2 text-blue-700">{p.pdf_url ? <a className="underline" href={p.pdf_url} target="_blank" rel="noreferrer">Файл</a> : '-'}</td>
-                  <td className="px-3 py-2 max-w-[260px] break-words text-gray-700">{p.note ?? '-'}</td>
-                  <td className="px-3 py-2 space-x-2">
-                    {(p.status === 'pending' || p.status === 'rejected') && (
-                      <button className="rounded border px-2 py-0.5" onClick={()=>openEdit(p)}>Изменить</button>
-                    )}
-                  </td>
+        {/* Scopus section */}
+        <div className="mb-6">
+          <div className="mb-2 font-semibold">Scopus ({scopusItems.length})</div>
+          <div className="rounded border bg-white">
+            <table className="text-sm table-auto min-w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 py-2 text-left w-14">ID</th>
+                  <th className="px-3 py-2 text-left w-16">Год</th>
+                  <th className="px-3 py-2 text-left">Статус</th>
+                  <th className="px-3 py-2 text-left">Название</th>
+                  <th className="px-3 py-2 text-left w-64">Авторы</th>
+                  <th className="px-3 py-2 text-left w-72">Источник</th>
+                  <th className="px-3 py-2 text-left">DOI</th>
+                  <th className="px-3 py-2 text-left">Scopus</th>
+                  <th className="px-3 py-2 text-left">Цит.</th>
+                  <th className="px-3 py-2 text-left">Квартиль</th>
+                  <th className="px-3 py-2 text-left">Perc. 2024</th>
+                  <th className="px-3 py-2 text-left">Файл</th>
+                  <th className="px-3 py-2 text-left w-72">Примечание</th>
+                  <th className="px-3 py-2 text-left">Действия</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {loading && (
+                  <tr><td className="px-3 py-2" colSpan={14}>Загрузка…</td></tr>
+                )}
+                {!loading && scopusItems.length === 0 && (
+                  <tr><td className="px-3 py-2" colSpan={14}>Нет данных</td></tr>
+                )}
+                {!loading && scopusItems.map(p => (
+                  <tr key={p.id} className={`odd:bg-white even:bg-gray-50 ${highlightId===p.id ? 'animate-pulse bg-green-50' : ''}`}>
+                    <td className="px-3 py-2 w-14 text-center">{p.id}</td>
+                    <td className="px-3 py-2 w-16 text-center">{p.year}</td>
+                    <td className="px-3 py-2"><StatusBadge status={p.status} /></td>
+                    <td className="px-3 py-2 whitespace-pre-wrap break-words hyphens-auto leading-relaxed">{p.title}</td>
+                    <td className="px-3 py-2 whitespace-pre-line break-words w-64">{p.authors.map(a=>a.display_name).join('\n')}</td>
+                    <td className="px-3 py-2 whitespace-pre-wrap break-words hyphens-auto leading-relaxed w-72">
+                      <div className="flex items-start gap-2">
+                        <span className="whitespace-pre-wrap break-words hyphens-auto">{p.source?.name ?? '-'}</span>
+                        <SourceBadge name={p.source?.name ?? undefined} type={p.source?.type ?? undefined} docType={p.doc_type ?? undefined} uploadSource={p.upload_source ?? undefined} />
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-blue-700">{p.doi ? <a className="underline" href={`https://doi.org/${p.doi}`} target="_blank" rel="noreferrer">{p.doi}</a> : '-'}</td>
+                    <td className="px-3 py-2 text-blue-700">{p.scopus_url ? <a className="underline" href={p.scopus_url} target="_blank" rel="noreferrer">Scopus</a> : '-'}</td>
+                    <td className="px-3 py-2">{p.citations_count}</td>
+                    <td className="px-3 py-2">{p.quartile ?? '-'}</td>
+                    <td className="px-3 py-2">{p.percentile_2024 ?? '-'}</td>
+                    <td className="px-3 py-2 text-blue-700">{p.pdf_url ? <a className="underline" href={p.pdf_url} target="_blank" rel="noreferrer">Файл</a> : '-'}</td>
+                    <td className="px-3 py-2 whitespace-pre-wrap break-words hyphens-auto leading-relaxed w-72 text-gray-700">{p.note ?? '-'}</td>
+                    <td className="px-3 py-2 space-x-2">
+                      {(p.status === 'pending' || p.status === 'rejected') && (
+                        <button className="rounded border px-2 py-0.5" onClick={()=>openEdit(p)}>Изменить</button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Articles section */}
+        <div className="mb-6">
+          <div className="mb-2 font-semibold">Статьи (ККСОН) ({articleItems.length})</div>
+          <div className="rounded border bg-white">
+            <table className="min-w-full text-sm table-auto">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 py-2 text-left">ID</th>
+                  <th className="px-3 py-2 text-left">Год</th>
+                  <th className="px-3 py-2 text-left">Статус</th>
+                  <th className="px-3 py-2 text-left">Название</th>
+                  <th className="px-3 py-2 text-left">Авторы</th>
+                  <th className="px-3 py-2 text-left">Источник</th>
+                  <th className="px-3 py-2 text-left">DOI</th>
+                  <th className="px-3 py-2 text-left">Scopus</th>
+                  <th className="px-3 py-2 text-left">Цит.</th>
+                  <th className="px-3 py-2 text-left">Квартиль</th>
+                  <th className="px-3 py-2 text-left">Perc. 2024</th>
+                  <th className="px-3 py-2 text-left">Файл</th>
+                  <th className="px-3 py-2 text-left">Примечание</th>
+                  <th className="px-3 py-2 text-left">Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading && (
+                  <tr><td className="px-3 py-2" colSpan={14}>Загрузка…</td></tr>
+                )}
+                {!loading && articleItems.length === 0 && (
+                  <tr><td className="px-3 py-2" colSpan={14}>Нет данных</td></tr>
+                )}
+                {!loading && articleItems.map(p => (
+                  <tr key={p.id} className={`odd:bg-white even:bg-gray-50 ${highlightId===p.id ? 'animate-pulse bg-green-50' : ''}`}>
+                    <td className="px-3 py-2 w-14 text-center">{p.id}</td>
+                    <td className="px-3 py-2 w-16 text-center">{p.year}</td>
+                    <td className="px-3 py-2"><StatusBadge status={p.status} /></td>
+                    <td className="px-3 py-2 whitespace-pre-wrap break-words hyphens-auto leading-relaxed">{p.title}</td>
+                    <td className="px-3 py-2 whitespace-pre-line break-words w-64">{p.authors.map(a=>a.display_name).join('\n')}</td>
+                    <td className="px-3 py-2 whitespace-pre-wrap break-words hyphens-auto leading-relaxed w-72">
+                      <div className="flex items-start gap-2">
+                        <span className="whitespace-pre-wrap break-words hyphens-auto">{p.source?.name ?? '-'}</span>
+                        <SourceBadge name={p.source?.name ?? undefined} type={p.source?.type ?? undefined} docType={p.doc_type ?? undefined} uploadSource={p.upload_source ?? undefined} />
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-blue-700">{p.doi ? <a className="underline" href={`https://doi.org/${p.doi}`} target="_blank" rel="noreferrer">{p.doi}</a> : '-'}</td>
+                    <td className="px-3 py-2 text-blue-700">{p.scopus_url ? <a className="underline" href={p.scopus_url} target="_blank" rel="noreferrer">Scopus</a> : '-'}</td>
+                    <td className="px-3 py-2">{p.citations_count}</td>
+                    <td className="px-3 py-2">{p.quartile ?? '-'}</td>
+                    <td className="px-3 py-2">{p.percentile_2024 ?? '-'}</td>
+                    <td className="px-3 py-2 text-blue-700">{p.pdf_url ? <a className="underline" href={p.pdf_url} target="_blank" rel="noreferrer">Файл</a> : '-'}</td>
+                    <td className="px-3 py-2 whitespace-pre-wrap break-words hyphens-auto leading-relaxed w-72 text-gray-700">{p.note ?? '-'}</td>
+                    <td className="px-3 py-2 space-x-2">
+                      {(p.status === 'pending' || p.status === 'rejected') && (
+                        <button className="rounded border px-2 py-0.5" onClick={()=>openEdit(p)}>Изменить</button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {editItem && (
@@ -199,6 +299,15 @@ export default function MyPublicationsPage() {
                   <label className="block text-sm text-gray-600">DOI</label>
                   <input className="w-full rounded border px-3 py-2" value={doi} onChange={e=>setDoi(e.target.value)} />
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600">URL (ссылка на источник)</label>
+                <input className="w-full rounded border px-3 py-2" value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://..." />
+                {editItem?.url ? (
+                  <div className="mt-1 text-xs">
+                    Текущая: <a className="text-blue-700 underline" href={editItem.url} target="_blank" rel="noreferrer">{editItem.url}</a>
+                  </div>
+                ) : null}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

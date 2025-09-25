@@ -36,10 +36,16 @@ export default function NavBar() {
             <img src="/zhubanov.png" alt="Logo" className="h-10 w-10 rounded-full object-contain" />
             {t('siteTitle')}
           </Link>
+          {/* Desktop nav */}
           <nav className="hidden sm:flex items-center gap-4 text-sm text-gray-700">
             <Link href="/" className="hover:text-primary">{t('menu.home')}</Link>
             <Link href="/stats" className="hover:text-primary">{t('menu.stats')}</Link>
-            <Link href="/authors" className="hover:text-primary">Авторы</Link>
+            {mounted && role !== 'guest' && (
+              <Link href="/authors" className="hover:text-primary">Авторы</Link>
+            )}
+            {mounted && role !== 'guest' && (
+              <Link href="/kokso" className="hover:text-primary">Статьи</Link>
+            )}
             {mounted && role !== 'guest' && (
               <Link href="/add" className="hover:text-primary">{t('common.upload')}</Link>
             )}
@@ -48,6 +54,9 @@ export default function NavBar() {
             )}
             {mounted && role === 'admin' && (
               <Link href="/admin" className="hover:text-primary">{t('menu.admin')}</Link>
+            )}
+            {mounted && role === 'admin' && (
+              <Link href="/users" className="hover:text-primary">Пользователи</Link>
             )}
             {mounted && role === 'guest' ? (
               <Link href="/login" className="hover:text-primary">{t('menu.login') || 'Вход'}</Link>
@@ -70,6 +79,24 @@ export default function NavBar() {
           >kz</button>
         </div>
         {/* removed static logout button to avoid hydration mismatch */}
+      </div>
+      {/* Mobile nav (visible on small screens) */}
+      <div className="sm:hidden border-t">
+        <div className="max-w-6xl mx-auto px-4 py-2 flex flex-wrap items-center gap-3 text-sm text-gray-700">
+          <Link href="/" className="hover:text-primary">{t('menu.home')}</Link>
+          {mounted && role !== 'guest' && (
+            <Link href="/authors" className="hover:text-primary">Авторы</Link>
+          )}
+          <Link href="/stats" className="hover:text-primary">{t('menu.stats')}</Link>
+          {mounted && role !== 'guest' && (
+            <Link href="/kokso" className="hover:text-primary">Статьи</Link>
+          )}
+          {mounted && role === 'guest' ? (
+            <Link href="/login" className="hover:text-primary">{t('menu.login') || 'Вход'}</Link>
+          ) : (
+            <button onClick={()=>{ clearAuth(); if (typeof window!== 'undefined') window.location.href='/' }} className="hover:text-primary">{t('menu.logout')}</button>
+          )}
+        </div>
       </div>
     </header>
   )

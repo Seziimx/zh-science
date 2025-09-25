@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import List, Optional
+from datetime import date
 from pydantic import BaseModel
 
 
@@ -28,15 +29,22 @@ class PublicationOut(BaseModel):
     title: str
     doi: Optional[str] = None
     pdf_url: Optional[str] = None
+    published_date: Optional[date] = None
+    # Backward-compat: keep scopus_url, but also provide generic url, language and kind
     scopus_url: Optional[str] = None
+    url: Optional[str] = None
+    language: Optional[str] = None
+    doc_type: Optional[str] = None
+    upload_source: Optional[str] = None
     citations_count: int
     quartile: Optional[str] = None
     percentile_2024: Optional[int] = None
+    main_authors_count: Optional[int] = None
     # include related objects for frontend
     authors: List[AuthorOut] = []
     source: Optional[SourceOut] = None
-    source: Optional[SourceOut] = None
-    authors: List[AuthorOut] = []
+    # derived field for UI: scopus|koks|journal
+    kind: Optional[str] = None
     status: str
     note: Optional[str] = None
 
@@ -77,6 +85,24 @@ class ValidateSourceResponse(BaseModel):
 
 # Users
 class UserOut(BaseModel):
+    id: int
+    full_name: str
+    login: str
+    email: Optional[str] = None
+    role: Optional[str] = None
+    faculty: str
+    department: str
+    position: str
+    degree: str
+    active: int
+    # admin-only sensitive field; frontend shows only to admins
+    initial_password: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PublicUserOut(BaseModel):
     id: int
     full_name: str
     login: str

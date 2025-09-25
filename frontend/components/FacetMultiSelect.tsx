@@ -19,6 +19,7 @@ export default function FacetMultiSelect({ title, endpoint, params, selected, se
   const [items, setItems] = useState<FacetItem[]>([])
   const [q, setQ] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string>('')
   const [lang] = useLang()
   const t = useI18n(lang)
   const [mounted, setMounted] = useState(false)
@@ -37,9 +38,11 @@ export default function FacetMultiSelect({ title, endpoint, params, selected, se
   useEffect(() => {
     let active = true
     setLoading(true)
+    setError('')
     fetch(`${API_BASE}/search/facets/${endpoint}?${qs}`)
       .then(r => r.json())
       .then((data: FacetItem[]) => { if (active) setItems(data) })
+      .catch((e) => { if (active) { setItems([]); setError('api_unreachable') } })
       .finally(() => active && setLoading(false))
     return () => { active = false }
   }, [endpoint, qs])
@@ -58,6 +61,11 @@ export default function FacetMultiSelect({ title, endpoint, params, selected, se
           {mounted ? `${t('facet.selected')} ${selected.length}` : ''}
         </div>
       </div>
+      {error === 'api_unreachable' && (
+        <div className="mb-2 rounded bg-yellow-50 px-2 py-1 text-xs text-yellow-700">
+          API недоступен. Проверьте, запущен ли сервер на {API_BASE}.
+        </div>
+      )}
       <input
         className="mb-2 w-full rounded border px-2 py-1"
         placeholder={mounted ? (loading ? t('facet.loading') : t('facet.search')) : ''}

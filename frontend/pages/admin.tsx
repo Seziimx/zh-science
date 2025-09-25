@@ -4,7 +4,6 @@ import { getToken, getRole } from '../lib/auth'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000'
 
-
 type Author = { id: number; display_name: string }
 type Source = { id: number; name: string | null }
 
@@ -14,6 +13,7 @@ type Publication = {
   title: string
   doi?: string | null
   scopus_url?: string | null
+  url?: string | null
   pdf_url?: string | null
   citations_count: number
   quartile?: string | null
@@ -58,6 +58,10 @@ export default function AdminPage() {
   const [uForm, setUForm] = useState({ full_name: '', login: '', role: 'teacher', faculty: '', department: '', position: '', degree: '', password: '' })
   const [uLoginAvail, setULoginAvail] = useState<null|boolean>(null)
   const [matchInfo, setMatchInfo] = useState<{count:number; examples:string[]; publications: Publication[]}>({count:0, examples:[], publications:[]})
+  const [onlyAdminUsers, setOnlyAdminUsers] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    try { return localStorage.getItem('onlyAdminUsers') === '1' } catch { return false }
+  })
   // edit modal
   const [editUserId, setEditUserId] = useState<number | null>(null)
   const [editForm, setEditForm] = useState({ full_name: '', login: '', role: 'teacher', faculty: '', department: '', position: '', degree: '' })
@@ -107,7 +111,10 @@ export default function AdminPage() {
       if (!token) return
       try {
         setULoading(true); setUError(null)
-        const res = await fetch(`${API_BASE}/admin/users`, { headers })
+        const sp = new URLSearchParams()
+        if (onlyAdminUsers) sp.set('created_source', 'admin')
+        const url = sp.toString() ? `${API_BASE}/admin/users?${sp.toString()}` : `${API_BASE}/admin/users`
+        const res = await fetch(url, { headers })
         if (!res.ok) throw new Error(await res.text())
         const list: UserRow[] = await res.json()
         setUsers(list)
@@ -116,7 +123,7 @@ export default function AdminPage() {
       } finally { setULoading(false) }
     }
     fetchUsers()
-  }, [token])
+  }, [token, onlyAdminUsers])
 
   // live match preview by full name (debounced)
   useEffect(() => {
@@ -327,8 +334,17 @@ export default function AdminPage() {
                         <td className="px-2 py-1">{p.id}</td>
                         <td className="px-2 py-1">{p.year}</td>
                         <td className="px-2 py-1">{p.status}</td>
-                        <td className="px-2 py-1 max-w-[400px] break-words">{p.title}</td>
-                        <td className="px-2 py-1">{p.source?.name ?? '-'}</td>
+                        <td className="px-2 py-1 max-w-[360px] break-words">{p.title}</td>
+                        <td className="px-2 py-1 whitespace-pre-wrap break-words hyphens-auto leading-relaxed w-72">
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-start gap-2">
+                              <span className="whitespace-pre-wrap break-words hyphens-auto">{p.source?.name ?? '-'}</span>
+                              {p.source?.url && (
+                                <a className="text-blue-700 underline" href={p.source.url} target="_blank" rel="noreferrer">URL</a>
+                              )}
+                            </div>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -359,12 +375,11 @@ export default function AdminPage() {
                 <th className="px-2 py-1 text-left">Название</th>
                 <th className="px-2 py-1 text-left">Авторы</th>
                 <th className="px-2 py-1 text-left">Источник</th>
-                <th className="px-2 py-1 text-left hidden md:table-cell">DOI</th>
+                <th className="px-2 py-1 text-left hidden md:table-cell">Ссылки</th>
                 <th className="px-2 py-1 text-left hidden md:table-cell">Scopus</th>
                 <th className="px-2 py-1 text-left hidden md:table-cell">Цит.</th>
                 <th className="px-2 py-1 text-left hidden lg:table-cell">Квартиль</th>
                 <th className="px-2 py-1 text-left hidden lg:table-cell">Perc. 2024</th>
-                <th className="px-2 py-1 text-left hidden lg:table-cell">Файл</th>
                 <th className="px-2 py-1 text-left">Примечание</th>
                 <th className="px-2 py-1 text-left">Действия</th>
               </tr>
@@ -384,12 +399,23 @@ export default function AdminPage() {
                   <td className="px-2 py-1 max-w-[360px] break-words">{p.title}</td>
                   <td className="px-2 py-1 whitespace-pre-line break-words w-60">{p.authors.map(a=>a.display_name).join('\n')}</td>
                   <td className="px-2 py-1">{p.source?.name ?? '-'}</td>
-                  <td className="px-2 py-1 text-blue-700 hidden md:table-cell">{p.doi ? <a className="underline" href={`https://doi.org/${p.doi}`} target="_blank" rel="noreferrer">{p.doi}</a> : '-'}</td>
+                  {/* Ссылки: PDF (полная), URL журнала, DOI */}
+                  <td className="px-2 py-1 hidden md:table-cell">
+                    <div className="flex flex-col gap-1">
+                      {(() => {
+                        const u = (p.pdf_url || '').replace('/files/files/', '/files/')
+                        if (!u) return null
+                        const href = u.startsWith('http') ? u : `${API_BASE}${u}`
+                        return <a className="text-blue-700 underline" href={href} target="_blank" rel="noreferrer">PDF</a>
+                      })()}
+                      {p.url ? <a className="text-blue-700 underline" href={p.url} target="_blank" rel="noreferrer">URL (журнал)</a> : null}
+                      {p.doi ? <a className="text-blue-700 underline" href={`https://doi.org/${p.doi}`} target="_blank" rel="noreferrer">DOI</a> : null}
+                    </div>
+                  </td>
                   <td className="px-2 py-1 text-blue-700 hidden md:table-cell">{p.scopus_url ? <a className="underline" href={p.scopus_url} target="_blank" rel="noreferrer">Scopus</a> : '-'}</td>
                   <td className="px-2 py-1 hidden md:table-cell">{p.citations_count}</td>
                   <td className="px-2 py-1 hidden lg:table-cell">{p.quartile ?? '-'}</td>
                   <td className="px-2 py-1 hidden lg:table-cell">{p.percentile_2024 ?? '-'}</td>
-                  <td className="px-2 py-1 text-blue-700 hidden lg:table-cell">{p.pdf_url ? <a className="underline" href={`${API_BASE}${p.pdf_url}`} target="_blank" rel="noreferrer">Файл</a> : '-'}</td>
                   <td className="px-2 py-1 max-w-[220px] break-words text-gray-700">{p.note ?? '-'}</td>
                   <td className="px-2 py-1">
                     <div className="flex flex-col space-y-1">
@@ -433,182 +459,16 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* Users management */}
+        {/* Users moved to a dedicated page */}
         <div className="mt-8">
           <h2 className="text-xl font-semibold mb-3">Пользователи</h2>
-          <div className="grid md:grid-cols-2 gap-3">
-            <div className="rounded border bg-white p-3">
-              <div className="font-medium mb-2">Добавить пользователя</div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="col-span-2">
-                  <label className="block text-xs text-gray-500">ФИО</label>
-                  <input className="w-full rounded border px-2 py-1" value={uForm.full_name} onChange={e=>setUForm({...uForm, full_name:e.target.value})} />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs text-gray-500">Логин</label>
-                  <input className="w-full rounded border px-2 py-1" value={uForm.login} onChange={e=>setUForm({...uForm, login:e.target.value})} />
-                  {uForm.login && (
-                    <div className={`mt-1 text-xs ${uLoginAvail===true?'text-green-700':'text-red-700'}`}>{uLoginAvail===true?'логин свободен':uLoginAvail===false?'логин занят':''}</div>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500">Пароль</label>
-                  <input className="w-full rounded border px-2 py-1" type="password" value={uForm.password} onChange={e=>setUForm({...uForm, password:e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500">Роль</label>
-                  <select className="w-full rounded border px-2 py-1" value={uForm.role} onChange={e=>setUForm({...uForm, role:e.target.value})}>
-                    <option value="student">студент</option>
-                    <option value="teacher">преподаватель</option>
-                    <option value="admin">админ</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500">Факультет</label>
-                  <input className="w-full rounded border px-2 py-1" value={uForm.faculty} onChange={e=>setUForm({...uForm, faculty:e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500">Кафедра</label>
-                  <input className="w-full rounded border px-2 py-1" value={uForm.department} onChange={e=>setUForm({...uForm, department:e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500">Должность</label>
-                  <input className="w-full rounded border px-2 py-1" value={uForm.position} onChange={e=>setUForm({...uForm, position:e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500">Учёная степень</label>
-                  <input className="w-full rounded border px-2 py-1" value={uForm.degree} onChange={e=>setUForm({...uForm, degree:e.target.value})} />
-                </div>
-              </div>
-              <div className="mt-3 flex gap-2">
-                <button className="rounded border px-3 py-1" type="button" onClick={async ()=>{
-                  try {
-                    if (!uForm.full_name.trim()) return
-                    const sp = new URLSearchParams({ full_name: uForm.full_name.trim() })
-                    const res = await fetch(`${API_BASE}/admin/users/match_preview?${sp.toString()}`, { headers: headers ?? {} })
-                    if (!res.ok) throw new Error(await res.text())
-                    const j = await res.json()
-                    setMatchInfo({ count: j.count||0, examples: j.examples||[], publications: j.publications||[] })
-                  } catch (e:any) {
-                    setUError(e.message||String(e))
-                  }
-                }}>Проверить совпадения</button>
-                <button className="rounded bg-primary px-3 py-1 text-white" type="button" onClick={async ()=>{
-                  try {
-                    setULoading(true); setUError(null)
-                    const res = await fetch(`${API_BASE}/admin/users`, {
-                      method: 'POST',
-                      headers: { ...(headers||{}), 'Content-Type':'application/json' },
-                      body: JSON.stringify({ ...uForm })
-                    })
-                    if (!res.ok) throw new Error(await res.text())
-                    const created: UserRow = await res.json()
-                    setUsers(prev => [created, ...prev])
-                    setUForm({ full_name: '', login: '', role: 'teacher', faculty: '', department: '', position: '', degree: '', password: '' })
-                    setMatchInfo({count:0, examples:[], publications:[]})
-                  } catch (e:any) {
-                    setUError(e.message||String(e))
-                  } finally { setULoading(false) }
-                }}>Добавить</button>
-              </div>
-              <div className="mt-2 text-xs text-gray-600">Найдено совпадений: <b>{matchInfo.count}</b> {matchInfo.examples.length?`(${matchInfo.examples.join(', ')})`:''}</div>
-              {matchInfo.publications.length>0 && (
-                <div className="mt-2 max-h-48 overflow-auto rounded border">
-                  <table className="min-w-full text-xs">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-2 py-1 text-left">Год</th>
-                        <th className="px-2 py-1 text-left">Название</th>
-                        <th className="px-2 py-1 text-left">Авторы</th>
-                        <th className="px-2 py-1 text-left">Источник</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {matchInfo.publications.map(p => (
-                        <tr key={p.id} className="odd:bg-white even:bg-gray-50">
-                          <td className="px-2 py-1">{p.year}</td>
-                          <td className="px-2 py-1 max-w-[280px] break-words">{p.title}</td>
-                          <td className="px-2 py-1 whitespace-pre-line break-words w-60">{p.authors.map(a=>a.display_name).join('\n')}</td>
-                          <td className="px-2 py-1">{p.source?.name ?? '-'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              {uError && <div className="mt-2 text-xs text-red-600">{uError}</div>}
-            </div>
-            <div className="rounded border bg-white p-3">
-              <div className="font-medium mb-2">Список пользователей</div>
-              <div className="max-h-72 overflow-auto">
-                <table className="min-w-full text-xs">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-2 py-1 text-left">ID</th>
-                      <th className="px-2 py-1 text-left">Логин</th>
-                      <th className="px-2 py-1 text-left">ФИО</th>
-                      <th className="px-2 py-1 text-left">Роль</th>
-                      <th className="px-2 py-1 text-left">Должность</th>
-                      <th className="px-2 py-1 text-left">Факультет</th>
-                      <th className="px-2 py-1 text-left">Кол-во публикаций</th>
-                      <th className="px-2 py-1 text-left">Статус</th>
-                      <th className="px-2 py-1 text-left">Действия</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map(u => (
-                      <tr key={u.id} className="odd:bg-white even:bg-gray-50">
-                        <td className="px-2 py-1">{u.id}</td>
-                        <td className="px-2 py-1">{u.login}</td>
-                        <td className="px-2 py-1">{u.full_name}</td>
-                        <td className="px-2 py-1">{u.role ?? '-'}</td>
-                        <td className="px-2 py-1">{u.position}</td>
-                        <td className="px-2 py-1">{u.faculty}</td>
-                        <td className="px-2 py-1">{u.publications_count ?? 0}</td>
-                        <td className="px-2 py-1">{u.active ? 'активен' : 'заблокирован'}</td>
-                        <td className="px-2 py-1">
-                          <div className="flex flex-col space-y-1">
-                            <button className="rounded border px-2 py-0.5 text-xs" onClick={()=>{
-                              setEditUserId(u.id)
-                              setEditForm({ full_name: u.full_name, login: u.login, role: (u.role||'teacher'), faculty: u.faculty, department: u.department, position: u.position, degree: u.degree })
-                              setEditLoginAvail(null)
-                            }}>Изменить</button>
-                            <button className="rounded border px-2 py-0.5 text-xs" onClick={async()=>{
-                              setPubsUserId(u.id)
-                              try {
-                                // Use 'initials' matching to align with the counter (last name + all initials)
-                                const res = await fetch(`${API_BASE}/admin/users/${u.id}/publications?match=initials`, { headers: headers ?? {} })
-                                if (res.ok) setPubsList(await res.json())
-                              } catch {}
-                            }}>Публикации</button>
-                            <button className="rounded border px-2 py-0.5 text-xs" onClick={()=>{ setPwdUserId(u.id); setPwdValue('') }}>Сбросить пароль</button>
-                            {u.active ? (
-                              <button className="rounded bg-yellow-500 text-white px-2 py-0.5 text-xs" onClick={async()=>{
-                                await fetch(`${API_BASE}/admin/users/${u.id}/active`, { method:'PATCH', headers:{ ...(headers||{}), 'Content-Type':'application/json' }, body: JSON.stringify({ active: 0 }) })
-                                setUsers(prev => prev.map(x => x.id===u.id? { ...x, active:0 }: x))
-                              }}>Заблокировать</button>
-                            ) : (
-                              <button className="rounded bg-green-600 text-white px-2 py-0.5 text-xs" onClick={async()=>{
-                                await fetch(`${API_BASE}/admin/users/${u.id}/active`, { method:'PATCH', headers:{ ...(headers||{}), 'Content-Type':'application/json' }, body: JSON.stringify({ active: 1 }) })
-                                setUsers(prev => prev.map(x => x.id===u.id? { ...x, active:1 }: x))
-                              }}>Разблокировать</button>
-                            )}
-                            <button className="rounded bg-red-600 text-white px-2 py-0.5 text-xs" onClick={async()=>{
-                              if (!confirm('Удалить пользователя?')) return
-                              const res = await fetch(`${API_BASE}/admin/users/${u.id}`, { method:'DELETE', headers: headers||{} })
-                              if (res.ok) setUsers(prev => prev.filter(x=>x.id!==u.id))
-                            }}>Удалить</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+          <div className="rounded border bg-white p-4">
+            <p className="text-sm text-gray-700">Управление пользователями перенесено на отдельную страницу.</p>
+            <a className="inline-block mt-2 rounded bg-primary px-3 py-1 text-white" href="/users">Перейти на страницу “Пользователи”</a>
           </div>
         </div>
       </div>
     </>
   )
+
 }

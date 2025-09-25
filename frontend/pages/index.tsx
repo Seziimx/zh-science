@@ -57,6 +57,8 @@ export default function HomePage() {
     setLoading(true)
     try {
       const params = new URLSearchParams({ page: String(page), per_page: String(perPage) })
+      // Show only Scopus on the main page
+      params.set('upload_source', 'scopus')
       if (q.trim()) params.set('q', q.trim())
       if (yearMin !== '') params.set('year_min', String(yearMin))
       if (yearMax !== '') params.set('year_max', String(yearMax))
@@ -153,6 +155,7 @@ export default function HomePage() {
               title={lang==='kz'?'Авторлар':'Авторы'}
               endpoint="authors"
               params={{
+                upload_source: 'scopus',
                 q: q.trim() || undefined,
                 year_min: yearMin || undefined,
                 year_max: yearMax || undefined,
@@ -244,6 +247,7 @@ export default function HomePage() {
                   type="button"
                   onClick={() => {
                     const sp = new URLSearchParams()
+                    sp.set('upload_source', 'scopus')
                     if (q.trim()) sp.set('q', q.trim())
                     if (yearMin !== '') sp.set('year_min', String(yearMin))
                     if (yearMax !== '') sp.set('year_max', String(yearMax))
@@ -262,6 +266,7 @@ export default function HomePage() {
                   type="button"
                   onClick={() => {
                     const sp = new URLSearchParams()
+                    sp.set('upload_source', 'scopus')
                     if (q.trim()) sp.set('q', q.trim())
                     if (yearMin !== '') sp.set('year_min', String(yearMin))
                     if (yearMax !== '') sp.set('year_max', String(yearMax))

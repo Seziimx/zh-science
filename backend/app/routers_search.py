@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Header
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, func, or_, and_, desc, asc
@@ -29,6 +29,139 @@ def _apply_common_filters(stmt, filters, joins, need_join_authors, need_join_sou
     return stmt
 
 
+@router.get("/stats")
+def search_stats(
+    q: Optional[str] = Query(default=None),
+    year_min: Optional[int] = Query(default=None),
+    year_max: Optional[int] = Query(default=None),
+    quartiles: Optional[List[str]] = Query(default=None),
+    authors: Optional[List[int]] = Query(default=None),
+    sources: Optional[List[int]] = Query(default=None),
+    issn: Optional[str] = Query(default=None),
+    source_type: Optional[str] = Query(default=None),
+    upload_source: Optional[str] = Query(default=None, description="kokson|scopus|manual"),
+    citations_min: Optional[int] = Query(default=None),
+    citations_max: Optional[int] = Query(default=None),
+    percentile_min: Optional[int] = Query(default=None),
+    percentile_max: Optional[int] = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """Return aggregate stats for KPI and charts used on stats page.
+    Applies the same filter semantics as /search (only approved publications).
+    """
+    filters = [Publication.status == "approved"]
+    join_authors = False
+    join_source = False
+
+    if year_min is not None:
+        filters.append(Publication.year >= year_min)
+    if year_max is not None:
+        filters.append(Publication.year <= year_max)
+    if quartiles:
+        filters.append(Publication.quartile.in_(quartiles))
+    if sources:
+        filters.append(Publication.source_id.in_(sources))
+    if source_type:
+        join_source = True
+        filters.append(Source.type == source_type)
+    if upload_source:
+        if upload_source == 'scopus':
+            filters.append(or_(Publication.upload_source == 'scopus', Publication.scopus_url.is_not(None)))
+        else:
+            filters.append(Publication.upload_source == upload_source)
+    if issn:
+        join_source = True
+        filters.append(Source.issn.ilike(f"%{issn.strip()}%"))
+    if citations_min is not None:
+        filters.append(Publication.citations_count >= citations_min)
+    if citations_max is not None:
+        filters.append(Publication.citations_count <= citations_max)
+    if percentile_min is not None:
+        filters.append(Publication.percentile_2024 >= percentile_min)
+    if percentile_max is not None:
+        filters.append(Publication.percentile_2024 <= percentile_max)
+    if q:
+        join_authors = True
+        join_source = True
+        q_like = f"%{q.strip()}%"
+        filters.append(or_(
+            Publication.title.ilike(q_like),
+            Publication.doi.ilike(q_like),
+            Source.name.ilike(q_like),
+            Author.display_name.ilike(q_like),
+        ))
+    if authors:
+        join_authors = True
+        filters.append(Author.id.in_(authors))
+
+    # Helper to start a select with joins
+    def make_base_select(cols):
+        stmt = select(*cols)
+        if join_authors:
+            stmt = stmt.select_from(Publication).join(Publication.authors)
+        else:
+            stmt = stmt.select_from(Publication)
+        if join_source:
+            stmt = stmt.join(Publication.source)
+        if filters:
+            stmt = stmt.where(and_(*filters))
+        return stmt
+
+    # KPI
+    total_pubs = db.execute(make_base_select([func.count(func.distinct(Publication.id))])).scalar() or 0
+    # distinct authors over filtered publications
+    stmt_auth_cnt = make_base_select([func.count(func.distinct(Author.id))])
+    if not join_authors:
+        stmt_auth_cnt = stmt_auth_cnt.join(Publication.authors)
+    total_authors = db.execute(stmt_auth_cnt).scalar() or 0
+    # distinct sources
+    stmt_src_cnt = make_base_select([func.count(func.distinct(Source.id))])
+    if not join_source:
+        stmt_src_cnt = stmt_src_cnt.join(Publication.source)
+    total_sources = db.execute(stmt_src_cnt).scalar() or 0
+    avg_per_author = float(total_pubs) / float(total_authors or 1)
+
+    # Yearly: publications and citations sum per year
+    yearly_rows = db.execute(make_base_select([Publication.year, func.count(func.distinct(Publication.id)), func.sum(Publication.citations_count)])
+                            .group_by(Publication.year)
+                            .order_by(Publication.year)).all()
+    yearly = [{"year": int(y), "publications": int(cnt or 0), "citations": int(cits or 0)} for (y, cnt, cits) in yearly_rows]
+
+    # Top authors
+    stmt_top_auth = make_base_select([Author.display_name, func.count(func.distinct(Publication.id))])
+    if not join_authors:
+        stmt_top_auth = stmt_top_auth.join(Publication.authors)
+    top_authors_rows = db.execute(stmt_top_auth.group_by(Author.display_name).order_by(desc(func.count(func.distinct(Publication.id)))).limit(20)).all()
+    top_authors = [{"author": n, "count": int(c or 0)} for (n, c) in top_authors_rows]
+
+    # Top sources
+    stmt_top_src = make_base_select([Source.name, func.count(func.distinct(Publication.id))])
+    if not join_source:
+        stmt_top_src = stmt_top_src.join(Publication.source)
+    top_sources_rows = db.execute(stmt_top_src.group_by(Source.name).order_by(desc(func.count(func.distinct(Publication.id)))).limit(20)).all()
+    top_sources = [{"source": n or "", "count": int(c or 0)} for (n, c) in top_sources_rows]
+
+    # Quartiles distribution
+    quart_rows = db.execute(make_base_select([Publication.quartile, func.count(func.distinct(Publication.id))])
+                           .where(Publication.quartile.is_not(None))
+                           .group_by(Publication.quartile)
+                           .order_by(Publication.quartile)).all()
+    quartiles_out = [{"quartile": qv or "", "count": int(c or 0)} for (qv, c) in quart_rows]
+
+    return {
+        "kpi": {
+            "publications": int(total_pubs),
+            "authors": int(total_authors),
+            "sources": int(total_sources),
+            "avg_per_author": round(avg_per_author, 2),
+        },
+        "yearly": yearly,
+        "top_authors": top_authors,
+        "top_sources": top_sources,
+        "quartiles": quartiles_out,
+    }
+
+
 @router.get("", response_model=SearchResponse)
 def search_publications(
     q: Optional[str] = Query(default=None, description="Keyword query across title/doi/author/source"),
@@ -39,6 +172,7 @@ def search_publications(
     sources: Optional[List[int]] = Query(default=None),
     issn: Optional[str] = Query(default=None),
     source_type: Optional[str] = Query(default=None, description="journal|conference"),
+    upload_source: Optional[str] = Query(default=None, description="kokson|scopus|manual"),
     citations_min: Optional[int] = Query(default=None),
     citations_max: Optional[int] = Query(default=None),
     percentile_min: Optional[int] = Query(default=None),
@@ -70,10 +204,23 @@ def search_publications(
     if source_type:
         joins.append("source")
         filters.append(Source.type == source_type)
+    if upload_source:
+        # restrict by upload_source
+        if upload_source == 'scopus':
+            # Include legacy scopus imports that may lack the explicit flag
+            filters.append(or_(Publication.upload_source == 'scopus', Publication.scopus_url.is_not(None)))
+        else:
+            filters.append(Publication.upload_source == upload_source)
 
     if issn:
         joins.append("source")
         filters.append(Source.issn.ilike(f"%{issn.strip()}%"))
+    if upload_source:
+        # Align semantics with /search and /search/stats
+        if upload_source == 'scopus':
+            filters.append(or_(Publication.upload_source == 'scopus', Publication.scopus_url.is_not(None)))
+        else:
+            filters.append(Publication.upload_source == upload_source)
 
     if citations_min is not None:
         filters.append(Publication.citations_count >= citations_min)
@@ -156,6 +303,43 @@ def search_publications(
     return SearchResponse(
         meta=PageMeta(page=page, per_page=per_page, total=total, total_pages=total_pages),
         items=[PublicationOut.model_validate(pub) for pub in result],
+    )
+
+
+@router.get("/mine", response_model=SearchResponse)
+def my_publications(
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=None),
+    db: Session = Depends(get_db),
+    x_user_id: int | None = Header(default=None, alias="X-User-Id"),
+):
+    """Return publications for the currently logged-in user by linking through Author.user_id.
+    Frontend provides X-User-Id; we filter approved publications where any author has user_id == X-User-Id.
+    """
+    settings = get_settings()
+    if per_page is None:
+        per_page = settings.PAGE_SIZE_DEFAULT
+    per_page = max(1, min(per_page, settings.PAGE_SIZE_MAX))
+    if not x_user_id:
+        return SearchResponse(meta=PageMeta(page=1, per_page=per_page, total=0, total_pages=1), items=[])
+
+    # Base query: approved publications joined with authors filtered by user_id
+    base = (
+        select(Publication)
+        .join(Publication.authors)
+        .where(Publication.status == "approved", Author.user_id == x_user_id)
+    )
+
+    # Count distinct publications
+    total = db.execute(select(func.count(func.distinct(Publication.id))).select_from(base.subquery())).scalar() or 0
+
+    # Page
+    offset = (page - 1) * per_page
+    items = db.execute(base.order_by(desc(Publication.year), Publication.id).offset(offset).limit(per_page)).scalars().unique().all()
+    total_pages = (total + per_page - 1) // per_page if total else 1
+    return SearchResponse(
+        meta=PageMeta(page=page, per_page=per_page, total=int(total), total_pages=total_pages),
+        items=[PublicationOut.model_validate(p) for p in items],
     )
 
 
@@ -451,6 +635,180 @@ def facets_faculties(limit: int = 100, db: Session = Depends(get_db)):
     ).all()
     return [{"name": r[0], "count": int(r[1])} for r in rows]
 
+
+@router.get("/facets/faculties_pubs")
+def facets_faculties_pubs(limit: int = 100, db: Session = Depends(get_db)):
+    """Return faculties with people_count and publications_count.
+    We compute people_count via SQL, and publications_count in Python by
+    mapping normalized author strings to faculties using users' name_variants.
+    """
+    # 1) People counts (ordering baseline)
+    def norm_expr(col):
+        return func.lower(
+            func.replace(
+                func.replace(
+                    func.replace(col, "\u00A0", " "),
+                    ",", ""
+                ),
+                ".", ""
+            )
+        )
+    fac_rows = db.execute(
+        select(
+            User.faculty,
+            func.count(func.distinct(norm_expr(User.full_name))).label("people")
+        )
+        .where(
+            User.faculty != "",
+            User.faculty.is_not(None),
+            func.lower(User.faculty) != "nan",
+        )
+        .group_by(User.faculty)
+        .order_by(desc("people"))
+        .limit(limit)
+    ).all()
+
+    # 2) Build normalized variant -> set(faculty) index from Users
+    import json, re
+    def _n(s: str) -> str:
+        return (s or "").replace("\u00A0"," ").lower().replace(" ","").replace(".","").replace(",","")
+
+    variant_to_faculties: dict[str, set[str]] = {}
+    users_all: list[User] = db.execute(select(User).where(User.faculty.is_not(None))).scalars().all()
+    for u in users_all:
+        if not u.faculty:
+            continue
+        fac = u.faculty
+        variants: list[str] = [u.full_name or ""]
+        try:
+            if u.name_variants:
+                vv = json.loads(u.name_variants)
+                if isinstance(vv, list):
+                    variants.extend([str(x) for x in vv])
+        except Exception:
+            pass
+        # also add simple patterns: "Last F." and with comma removed
+        parts = [p for p in (u.full_name or '').replace('\u00A0',' ').split() if p]
+        if parts:
+            last = parts[0]
+            inits = [p[0] for p in parts[1:]]
+            if inits:
+                variants.append(f"{last} " + ".".join(inits) + ".")
+                variants.append(", ".join([last, " ".join(parts[1:])]))
+        for v in set(variants):
+            key = _n(v)
+            if not key:
+                continue
+            variant_to_faculties.setdefault(key, set()).add(fac)
+
+    # 3) Scan approved publications once and accumulate matches per faculty
+    fac_to_pubids: dict[str, set[int]] = {name: set() for name, _ in fac_rows}
+    pubs = db.execute(
+        select(Publication)
+        .options(joinedload(Publication.authors))
+        .where(Publication.status == "approved")
+    ).scalars().unique().all()
+    for p in pubs:
+        pid = p.id
+        for a in p.authors:
+            # strip parentheses like (123456) and normalize
+            a_raw = re.sub(r"\s*\([^)]*\)\s*", " ", (a.display_name or "")).strip()
+            key = _n(a_raw)
+            if key in variant_to_faculties:
+                for fac in variant_to_faculties[key]:
+                    if fac in fac_to_pubids:
+                        fac_to_pubids[fac].add(pid)
+
+    # 4) Build response
+    out = []
+    for name, people in fac_rows:
+        pubs_cnt = len(fac_to_pubids.get(name, set()))
+        out.append({"name": name, "people_count": int(people), "publications_count": pubs_cnt})
+    return out
+
+
+@router.get("/facets/departments_pubs")
+def facets_departments_pubs(limit: int = 100, db: Session = Depends(get_db)):
+    """Return departments with people_count and publications_count using Python-side variant mapping (fast enough for ~1k rows)."""
+    def norm_expr(col):
+        return func.lower(
+            func.replace(
+                func.replace(
+                    func.replace(col, "\u00A0", " "),
+                    ",", ""
+                ),
+                ".", ""
+            )
+        )
+    import json, re
+    def _n(s: str) -> str:
+        return (s or "").replace("\u00A0"," ").lower().replace(" ","").replace(".","").replace(",","")
+
+    dep_rows = db.execute(
+        select(
+            User.department,
+            func.count(func.distinct(norm_expr(User.full_name))).label("people")
+        )
+        .where(
+            User.department != "",
+            User.department.is_not(None),
+            func.lower(User.department) != "nan",
+        )
+        .group_by(User.department)
+        .order_by(desc("people"))
+        .limit(limit)
+    ).all()
+
+    # Build variant -> departments map
+    variant_to_deps: dict[str, set[str]] = {}
+    users_all: list[User] = db.execute(select(User).where(User.department.is_not(None))).scalars().all()
+    for u in users_all:
+        if not u.department:
+            continue
+        dep = u.department
+        variants: list[str] = [u.full_name or ""]
+        try:
+            if u.name_variants:
+                vv = json.loads(u.name_variants)
+                if isinstance(vv, list):
+                    variants.extend([str(x) for x in vv])
+        except Exception:
+            pass
+        parts = [p for p in (u.full_name or '').replace('\u00A0',' ').split() if p]
+        if parts:
+            last = parts[0]
+            inits = [p[0] for p in parts[1:]]
+            if inits:
+                variants.append(f"{last} " + ".".join(inits) + ".")
+                variants.append(", ".join([last, " ".join(parts[1:])]))
+        for v in set(variants):
+            key = _n(v)
+            if not key:
+                continue
+            variant_to_deps.setdefault(key, set()).add(dep)
+
+    dep_to_pubids: dict[str, set[int]] = {name: set() for name, _ in dep_rows}
+    pubs = db.execute(
+        select(Publication)
+        .options(joinedload(Publication.authors))
+        .where(Publication.status == "approved")
+    ).scalars().unique().all()
+    for p in pubs:
+        pid = p.id
+        for a in p.authors:
+            a_raw = re.sub(r"\s*\([^)]*\)\s*", " ", (a.display_name or "")).strip()
+            key = _n(a_raw)
+            if key in variant_to_deps:
+                for dep in variant_to_deps[key]:
+                    if dep in dep_to_pubids:
+                        dep_to_pubids[dep].add(pid)
+
+    out = []
+    for name, people in dep_rows:
+        pubs_cnt = len(dep_to_pubids.get(name, set()))
+        out.append({"name": name, "people_count": int(people), "publications_count": pubs_cnt})
+    return out
+
 @router.get("/facets/departments")
 def facets_departments(limit: int = 100, db: Session = Depends(get_db)):
     """Return list of departments from Users with de-duplicated counts per department."""
@@ -677,26 +1035,65 @@ def faculty_export(
     # Helper: try to resolve author_name to a concrete User among the selected users list
     def resolve_user_for_author(author_name: str) -> Optional[User]:
         import re
-        an_raw = (author_name or '').replace('\u00A0', ' ')
+        # remove parenthetical IDs like '(...6504403163)'
+        an_raw = re.sub(r"\s*\([^)]*\)\s*", " ", (author_name or '').replace('\u00A0', ' ')).strip()
         an = _norm(an_raw)
-        initials_in_author = [m[0] for m in re.findall(r"([A-Za-zА-Яа-я])\.", an_raw)]
-        initials_in_author_lat = [ _translit_ru_to_en(ch)[:1].upper() for ch in initials_in_author ]
+        # Capture initials including Latin digraphs before a dot, e.g., 'Zh.', 'Sh.'
+        raw_initial_tokens = [m for m in re.findall(r"([A-Za-zА-Яа-яЁё]{1,3})\.", an_raw)]
+        # Normalize each to Latin uppercase form comparable with user's transliterated initials
+        def _tok_to_lat(tok: str) -> str:
+            # If Cyrillic single letter, transliterate (Ж->Zh, Ч->Ch, Ш->Sh)
+            if any('А' <= ch <= 'я' or ch in 'ЁёІіӘәҒғҚқҢңӨөҰұҮүҺһ' for ch in tok):
+                return _translit_ru_to_en(tok)[:2].upper()
+            return tok[:2].upper()
+        initials_in_author_lat = [_tok_to_lat(t) for t in raw_initial_tokens]
 
         best_u: Optional[User] = None
         best_score = 0.0
         for u in users:
-            parts = [p for p in (u.full_name or '').replace("\u00A0", " ").split() if p]
+            parts = [p for p in (u.full_name or '').replace('\u00A0', ' ').split() if p]
             if not parts:
                 continue
             last_ru = parts[0]
+            first_ru = parts[1] if len(parts) > 1 else ''
             last_en = _translit_ru_to_en(last_ru)
+            first_en = _translit_ru_to_en(first_ru)
+
+            # 1) Last name must match (ru or translit)
             last_ok = (_norm(last_ru) in an) or (_norm(last_en) in an) or any((_norm(v) in an) or (an in _norm(v)) for v in _name_variants(u.full_name))
             if not last_ok:
                 continue
+
+            # 2) If initials are present in author string, require they are subset of user's initials
             if initials_in_author_lat:
-                user_initials = ''.join([_translit_ru_to_en(p[:1])[:1].upper() for p in parts[1:]])
-                if not set(initials_in_author_lat).issubset(set(user_initials)):
+                # Build user's transliterated initials as 2-char tokens (to match Zh/Ch/Sh)
+                user_initial_tokens = []
+                for p in parts[1:]:
+                    lat = _translit_ru_to_en(p[:1]).upper()
+                    user_initial_tokens.append(lat[:2])
+                if not set(initials_in_author_lat).issubset(set(user_initial_tokens)):
                     continue
+                # Additionally, ensure the author's FIRST initial matches user's FIRST initial
+                # e.g., 'Abzal K.' should not match a user 'Nazar K.'
+                author_first_init = initials_in_author_lat[0] if initials_in_author_lat else ''
+                user_first_init = (user_initial_tokens[0] if user_initial_tokens else '')
+                if author_first_init and user_first_init and author_first_init != user_first_init:
+                    continue
+            else:
+                # 3) No initials given: require evidence of first name token (ru or translit) OR a name variant match
+                first_ok = False
+                if first_ru:
+                    if (_norm(first_ru) in an) or (_norm(first_en) in an):
+                        first_ok = True
+                if not first_ok:
+                    # try variants (e.g., 'Last F.' or 'F. Last')
+                    variants = _name_variants(u.full_name)
+                    vnorms = [_norm(v) for v in variants if v]
+                    if any(vn and vn in an for vn in vnorms) or any(an and an in vn for vn in vnorms):
+                        first_ok = True
+                if not first_ok:
+                    continue
+
             # score by length of last name match
             score = max(len(last_ru), len(last_en))
             if score > best_score:
@@ -790,6 +1187,158 @@ def faculty_export(
     )
 
 
+@router.get("/faculty/count")
+def faculty_count(
+    faculty: str = Query(..., description="Faculty or department text (partial is OK)"),
+    match: str = Query(default="broad", description="exact|initials|broad"),
+    scope: str = Query(default="auto", description="auto|faculty|department"),
+    db: Session = Depends(get_db),
+):
+    """Return the number of publication rows that would be present in the export
+    (i.e., publications having at least one author matched to the selected faculty/department).
+    Reuses the same matching logic as faculty_export to ensure parity with CSV/XLSX.
+    """
+    # Reuse inner helpers from faculty_export
+    def norm_expr(col):
+        return func.lower(
+            func.replace(
+                func.replace(
+                    func.replace(
+                        func.replace(
+                            func.replace(
+                                func.replace(col, "\u00A0", " "),
+                                ".", ""
+                            ),
+                            ",", ""
+                        ),
+                        " ", ""
+                    ),
+                    "«", ""
+                ),
+                "»", ""
+            )
+        )
+
+    fac_norm = (
+        faculty.replace("\u00A0", " ")
+        .replace(" ", "")
+        .replace(".", "")
+        .replace(",", "")
+        .replace("«", "")
+        .replace("»", "")
+        .lower()
+    )
+
+    users: list[User] = []
+    if scope in ("auto", "faculty"):
+        users = db.execute(select(User).where(norm_expr(User.faculty).like(f"%{fac_norm}%"))).scalars().all()
+    if not users and scope in ("auto", "department"):
+        users = db.execute(select(User).where(norm_expr(User.department).like(f"%{fac_norm}%"))).scalars().all()
+    if not users:
+        base_raw = faculty.replace("«", "").replace("»", "").strip()
+        stripped = base_raw
+        for token in ["кафедрасы", "кафедра", "каф."]:
+            stripped = stripped.replace(token, "").strip()
+        stripped_norm = (
+            stripped.replace("\u00A0", " ")
+            .replace(" ", "")
+            .replace(".", "")
+            .replace(",", "")
+            .lower()
+        )
+        if scope in ("auto", "faculty"):
+            users = db.execute(
+                select(User).where(
+                    or_(
+                        norm_expr(User.faculty).like(f"%{stripped_norm}%"),
+                        User.faculty.ilike(f"%{stripped}%"),
+                    )
+                )
+            ).scalars().all()
+        if not users and scope in ("auto", "department"):
+            users = db.execute(
+                select(User).where(
+                    or_(
+                        norm_expr(User.department).like(f"%{stripped_norm}%"),
+                        User.department.ilike(f"%{stripped}%"),
+                    )
+                )
+            ).scalars().all()
+
+    if not users:
+        return {"count": 0}
+
+    # Iterate over approved publications and count those that would appear in export
+    rows = db.execute(
+        select(Publication)
+        .where(Publication.status == "approved")
+        .options(joinedload(Publication.source), joinedload(Publication.authors))
+    ).scalars().unique().all()
+
+    # Use the same author filtering as in export to decide which publications produce rows
+    def resolve_user_for_author(author_name: str) -> Optional[User]:
+        import re
+        an_raw = re.sub(r"\s*\([^)]*\)\s*", " ", (author_name or '').replace('\u00A0', ' ')).strip()
+        an = _norm(an_raw)
+        # Extract initials with digraphs support
+        raw_initial_tokens = [m for m in re.findall(r"([A-Za-zА-Яа-яЁё]{1,3})\.", an_raw)]
+        def _tok_to_lat(tok: str) -> str:
+            if any('А' <= ch <= 'я' or ch in 'ЁёІіӘәҒғҚқҢңӨөҰұҮүҺһ' for ch in tok):
+                return _translit_ru_to_en(tok)[:2].upper()
+            return tok[:2].upper()
+        initials_in_author_lat = [_tok_to_lat(t) for t in raw_initial_tokens]
+
+        best_u: Optional[User] = None
+        best_score = 0.0
+        for u in users:
+            parts = [p for p in (u.full_name or '').replace('\u00A0', ' ').split() if p]
+            if not parts:
+                continue
+            last_ru = parts[0]
+            first_ru = parts[1] if len(parts) > 1 else ''
+            last_en = _translit_ru_to_en(last_ru)
+            first_en = _translit_ru_to_en(first_ru)
+
+            last_ok = (_norm(last_ru) in an) or (_norm(last_en) in an) or any((_norm(v) in an) or (an in _norm(v)) for v in _name_variants(u.full_name))
+            if not last_ok:
+                continue
+            if initials_in_author_lat:
+                user_initial_tokens = []
+                for p in parts[1:]:
+                    lat = _translit_ru_to_en(p[:1]).upper()
+                    user_initial_tokens.append(lat[:2])
+                if not set(initials_in_author_lat).issubset(set(user_initial_tokens)):
+                    continue
+                author_first_init = initials_in_author_lat[0] if initials_in_author_lat else ''
+                user_first_init = (user_initial_tokens[0] if user_initial_tokens else '')
+                if author_first_init and user_first_init and author_first_init != user_first_init:
+                    continue
+            else:
+                first_ok = False
+                if first_ru:
+                    if (_norm(first_ru) in an) or (_norm(first_en) in an):
+                        first_ok = True
+                if not first_ok:
+                    variants = _name_variants(u.full_name)
+                    vnorms = [_norm(v) for v in variants if v]
+                    if any(vn and vn in an for vn in vnorms) or any(an and an in vn for vn in vnorms):
+                        first_ok = True
+                if not first_ok:
+                    continue
+            score = max(len(last_ru), len(last_en))
+            if score > best_score:
+                best_score = score
+                best_u = u
+        return best_u
+
+    count_rows = 0
+    for p in rows:
+        filtered_authors = [a.display_name for a in p.authors if resolve_user_for_author(a.display_name) is not None]
+        if filtered_authors:
+            count_rows += 1
+    return {"count": count_rows}
+
+
 @router.get("/facets/authors")
 def facets_authors(
     q: Optional[str] = Query(default=None),
@@ -799,6 +1348,7 @@ def facets_authors(
     sources: Optional[List[int]] = None,
     issn: Optional[str] = None,
     source_type: Optional[str] = None,
+    upload_source: Optional[str] = Query(default=None, description="kokson|scopus|manual"),
     citations_min: Optional[int] = None,
     citations_max: Optional[int] = None,
     percentile_min: Optional[int] = None,
