@@ -24,18 +24,11 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title=settings.APP_NAME, debug=settings.DEBUG)
 
-    # CORS: allow local dev and Vercel preview/prod domains
+    # CORS (temporary wide-open to unblock preview). TODO: tighten to specific domains after verification.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-            "https://zh-science.vercel.app",
-            # common preview domain (fallback; exact preview URL also matched by regex below)
-            "https://zh-science-git-main-seziimxs-projects.vercel.app",
-        ],
-        # Additionally allow any *.vercel.app subdomain (for preview deploys)
-        allow_origin_regex=r"^https://[-a-z0-9]+\.vercel\.app$",
+        allow_origins=["*"],
+        allow_origin_regex=None,
         allow_credentials=False,  # tokens, not cookies
         allow_methods=["*"],
         allow_headers=["*", "Authorization"],
