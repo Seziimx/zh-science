@@ -48,6 +48,7 @@ export default function KoksoPage() {
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(20)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<SearchResponse | null>(null)
   const [yearMin, setYearMin] = useState<number | ''>('')
   const [yearMax, setYearMax] = useState<number | ''>('')
@@ -80,6 +81,7 @@ export default function KoksoPage() {
 
   const fetchData = async () => {
     setLoading(true)
+    setError(null)
     try {
       const params = new URLSearchParams()
       if (q.trim()) params.set('q', q.trim())
@@ -90,12 +92,22 @@ export default function KoksoPage() {
       if (sort) params.set('sort', sort)
       if (docType) params.set('doc_type', docType)
       if (faculty) params.set('faculty', faculty)
+      // fetch only approved items by default to reduce payload
+      params.set('status', 'approved')
       if (authorIds.length) authorIds.forEach(id => params.append('authors', String(id)))
-      const res = await fetch(`${API_BASE}/publications/kokson?${params.toString()}`, { headers: authHeaders() })
+      // add timeout via AbortController
+      const ctrl = new AbortController()
+      const t = window.setTimeout(() => ctrl.abort(), 20000)
+      const res = await fetch(`${API_BASE}/publications/kokson?${params.toString()}`, { headers: authHeaders(), signal: ctrl.signal })
+      window.clearTimeout(t)
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`)
+      }
       const json: any = await res.json()
       setData(Array.isArray(json) ? json as SearchResponse : (json?.items || []))
     } catch (e) {
       console.error(e)
+      setError((e as any)?.message || 'Ошибка загрузки')
     } finally {
       setLoading(false)
     }
@@ -186,7 +198,7 @@ export default function KoksoPage() {
         </form>
 
         <div className="mt-3 flex items-center justify-between text-sm text-gray-600">
-          <div>{loading ? 'Загрузка…' : `${t('search.found')}: ${data ? data.length : 0}`}</div>
+          <div>{loading ? 'Загрузка…' : error ? `Ошибка: ${error}` : `${t('search.found')}: ${data ? data.length : 0}`}</div>
           <div className="inline-flex overflow-hidden rounded border">
             <button className={`px-3 py-1 ${view === 'table' ? 'bg-primary text-white' : 'bg-white'}`} onClick={() => setView('table')} type="button">{t('search.table')}</button>
             <button className={`px-3 py-1 ${view === 'cards' ? 'bg-primary text-white' : 'bg-white'}`} onClick={() => setView('cards')} type="button">{t('search.cards')}</button>

@@ -34,7 +34,12 @@
     "facultyAll": "Все",
     "facultyUnassigned": "Без привязки",
     "docType": "Тип публикации",
-    "actions": "Действия"
+    "actions": "Действия",
+    "fromYear": "Год от",
+    "toYear": "Год до",
+    "issn": "ISSN",
+    "applyBtn": "Применить",
+    "clearBtn": "Тазарту"
   },
   "articles": {
     "title": "Статьи",
@@ -95,6 +100,25 @@
       "delete": "Удалить"
     }
   },
+  "stats": {
+    "title": "Статьи — сводка по факультетам",
+    "downloadPdf": "Скачать PDF",
+    "pngYears": "PNG (Годы)",
+    "pngAuthors": "PNG (Авторы)",
+    "pngSources": "PNG (Источники)",
+    "pngQuartiles": "PNG (Квартиль)",
+    "facultyBreakdown": "Кликните по столбцу, чтобы увидеть разбивку по кафедрам",
+    "byDepartments": "Разбивка по кафедрам",
+    "langShare": "Доли языков по годам (%)",
+    "kpiPublications": "Публикации",
+    "kpiAuthors": "Авторы",
+    "kpiSources": "Источники",
+    "kpiAvg": "Средний показатель",
+    "yearly": "По годам",
+    "topAuthors": "Топ-авторы",
+    "topSources": "Топ-источники",
+    "quartiles": "Квартиль"
+  },
   "facet": {
     "selected": "Выбрано:",
     "search": "Поиск...",
@@ -112,7 +136,7 @@
     "source": "Источник",
     "sourceAdmin": "admin",
     "count": "Количество",
-    "sortName Asc": "Имя A–Я",
+    "sortNameAsc": "Имя A–Я",
     "sortNameDesc": "Имя Я–A",
     "table": "Таблица",
     "cards": "Карточки",
