@@ -16,6 +16,7 @@
     "found": "Найдено",
     "table": "Таблица",
     "cards": "Карточки",
+    "citFrom": "Цит. от",
     "citTo": "Цит. до",
     "percFrom": "Перцен. от",
     "percTo": "Перцен. до",
@@ -34,12 +35,10 @@
     "facultyAll": "Все",
     "facultyUnassigned": "Без привязки",
     "docType": "Тип публикации",
-    "actions": "Действия",
-    "fromYear": "Год от",
-    "toYear": "Год до",
-    "issn": "ISSN",
-    "applyBtn": "Применить",
-    "clearBtn": "Тазарту"
+    "quartile": "Квартиль",
+    "yearFrom": "Год от",
+    "yearTo": "Год до",
+    "actions": "Действия"
   },
   "articles": {
     "title": "Статьи",
@@ -70,7 +69,7 @@
     "checkSource": "Проверить журнал",
     "save": "Сохранить",
     "checking": "Проверка...",
-    "submitted": "Файл загружен. Публикация создана (pending). Спасибо!",
+    "submitted": "Файл загружен. Публикация создана (на модерации). Спасибо!",
     "requireAuth": "Для загрузки требуется роль пользователя или админа. Выберите роль сверху и введите пароль.",
     "foundSourcePrefix": "Найден источник: ",
     "sourceNotFound": "Источник не найден — можно добавить вручную",
@@ -99,25 +98,6 @@
       "reject": "Отклонить",
       "delete": "Удалить"
     }
-  },
-  "stats": {
-    "title": "Статьи — сводка по факультетам",
-    "downloadPdf": "Скачать PDF",
-    "pngYears": "PNG (Годы)",
-    "pngAuthors": "PNG (Авторы)",
-    "pngSources": "PNG (Источники)",
-    "pngQuartiles": "PNG (Квартиль)",
-    "facultyBreakdown": "Кликните по столбцу, чтобы увидеть разбивку по кафедрам",
-    "byDepartments": "Разбивка по кафедрам",
-    "langShare": "Доли языков по годам (%)",
-    "kpiPublications": "Публикации",
-    "kpiAuthors": "Авторы",
-    "kpiSources": "Источники",
-    "kpiAvg": "Средний показатель",
-    "yearly": "По годам",
-    "topAuthors": "Топ-авторы",
-    "topSources": "Топ-источники",
-    "quartiles": "Квартиль"
   },
   "facet": {
     "selected": "Выбрано:",
@@ -161,5 +141,23 @@
     "username": "Логин",
     "password": "Пароль",
     "signIn": "Войти"
+  },
+  "stats": {
+    "title": "Статьи — сводка по факультетам",
+    "downloadPdf": "Скачать PDF",
+    "pngYears": "PNG (Годы)",
+    "pngAuthors": "PNG (Авторы)",
+    "pngSources": "PNG (Источники)",
+    "pngQuartiles": "PNG (Квартиль)",
+    "byFaculty": "По факультетам",
+    "byDept": "Разбивка по кафедрам",
+    "langShare": "Доли языков по годам (%)",
+    "kpiPublications": "Публикации",
+    "kpiAuthors": "Авторы",
+    "kpiSources": "Источники",
+    "kpiAvg": "Средн. цитируемость",
+    "topAuthors": "Топ-авторы",
+    "topSources": "Топ-журналы",
+    "quartiles": "Квартильное распределение"
   }
 }
