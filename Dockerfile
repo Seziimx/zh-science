@@ -19,9 +19,10 @@ RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 # Copy backend source
 COPY backend/ /app/backend/
 
-# Copy Excel, if present at repo root, into image root
-# (app/main.py searches at project root, so this keeps behavior)
-COPY zhubanov_scopus_issn.xlsx /app/zhubanov_scopus_issn.xlsx
+# Optional dataset import: if you want to auto-import Excel on startup,
+# either bake the file into the image in your own fork (uncomment COPY below)
+# or provide it via volume/env (e.g., set AUTO_IMPORT_ON_STARTUP=1 and mount the file).
+# COPY zhubanov_scopus_issn.xlsx /app/zhubanov_scopus_issn.xlsx
 
 # Expose Render's required port for Docker web services
 EXPOSE 10000
