@@ -4,6 +4,9 @@ const CLIENT_ID_KEY = 'clientId'
 const ROLE_KEY = 'role'
 const TOKEN_KEY = 'token'
 const USER_ID_KEY = 'user_id'
+const LAST_ACTIVE_AT_KEY = 'last_active_at'
+// 24 hours inactivity timeout
+export const INACTIVITY_TIMEOUT_MS = 24 * 60 * 60 * 1000
 
 function uuidv4() {
   // simple UUIDv4 generator for client id
@@ -52,6 +55,8 @@ export function setAuth(role: Role, token?: string, userId?: number | null) {
     if (userId === null) localStorage.removeItem(USER_ID_KEY)
     else localStorage.setItem(USER_ID_KEY, String(userId))
   }
+  // mark activity on auth change
+  try { localStorage.setItem(LAST_ACTIVE_AT_KEY, String(Date.now())) } catch {}
   ensureClientId()
 }
 
@@ -71,4 +76,31 @@ export function authHeaders(): HeadersInit {
   if (cid) h['X-Client-Id'] = cid
   if (uid !== null) h['X-User-Id'] = String(uid)
   return h
+}
+
+// Activity helpers
+export function markActivity() {
+  if (typeof window === 'undefined') return
+  try { localStorage.setItem(LAST_ACTIVE_AT_KEY, String(Date.now())) } catch {}
+}
+
+export function isSessionExpired(now: number = Date.now()): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    const v = localStorage.getItem(LAST_ACTIVE_AT_KEY)
+    if (!v) return false // not tracked yet
+    const last = Number(v)
+    if (!Number.isFinite(last)) return false
+    return now - last > INACTIVITY_TIMEOUT_MS
+  } catch { return false }
+}
+
+// Clears auth if expired; returns true if it did
+export function maybeExpireSession(): boolean {
+  if (typeof window === 'undefined') return false
+  if (isSessionExpired()) {
+    clearAuth()
+    return true
+  }
+  return false
 }

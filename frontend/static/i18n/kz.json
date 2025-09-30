@@ -8,7 +8,8 @@
     "admin": "Админ",
     "logout": "Шығу",
     "login": "Кіру",
-    "mine": "Менің жарияланымдарым"
+    "mine": "Менің жарияланымдарым",
+    "users": "Пайдаланушылар"
   },
   "search": {
     "placeholder": "Кілт сөздер, авторлар, дереккөздер, DOI бойынша іздеу...",
@@ -28,16 +29,22 @@
     "apply": "Қолдану",
     "reset": "Тазарту",
     "exportCsv": "CSV экспорт",
+    "exportXlsx": "XLSX экспорт",
     "links": "Сілтемелер (Scopus/DOI)",
     "citations": "Дәй.",
-    "perc2024": "Перт. 2024"
+    "perc2024": "Перт. 2024",
+    "pageSize": "Бетте",
+    "language": "Тіл",
+    "languageAll": "Барлығы",
+    "faculty": "Факультет",
+    "facultyAll": "Барлығы",
+    "facultyUnassigned": "Байланыссыз",
+    "docType": "Жарияланым түрі",
+    "actions": "Әрекеттер"
   },
-  "stats": {
-    "title": "Статистика",
-    "kpiPublications": "Жарияланымдар",
-    "kpiAuthors": "Авторлар",
-    "kpiSources": "Дереккөздер",
-    "kpiAvg": "Авторға орташа",
+  "articles": {
+    "title": "Мақалалар",
+    "authorsFacet": "Авторлар (Мақалалар)",
     "yearly": "Жылдар бойынша",
     "topAuthors": "Топ-авторлар",
     "topSources": "Топ-дереккөздер",
@@ -105,5 +112,36 @@
     "loggedAs": "Сіз кірдіңіз:",
     "prev": "Артқа",
     "next": "Алға"
+  },
+  "users": {
+    "title": "Пайдаланушылар",
+    "source": "Дереккөз",
+    "sourceAdmin": "admin",
+    "count": "Саны",
+    "sortNameAsc": "Аты A–Я",
+    "sortNameDesc": "Аты Я–A",
+    "table": "Кесте",
+    "cards": "Карталар",
+    "refresh": "Жаңарту",
+    "addUser": "Пайдаланушы қосу",
+    "exportXlsx": "XLSX экспорт",
+    "pageSize": "Бетте",
+    "headers": {
+      "id": "ID",
+      "login": "Логин",
+      "fullName": "Аты‑жөні",
+      "role": "Рөлі",
+      "position": "Лауазымы",
+      "faculty": "Факультет",
+      "publications": "Жарияланымдар",
+      "status": "Күйі",
+      "actions": "Әрекеттер"
+    }
+  },
+  "loginPage": {
+    "title": "Кіру",
+    "username": "Логин",
+    "password": "Құпиясөз",
+    "signIn": "Кіру"
   }
 }

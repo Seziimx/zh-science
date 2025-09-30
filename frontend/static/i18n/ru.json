@@ -8,19 +8,14 @@
     "admin": "Админ",
     "logout": "Выход",
     "login": "Вход",
-    "mine": "Мои публикации"
+    "mine": "Мои публикации",
+    "users": "Пользователи"
   },
   "search": {
     "placeholder": "Поиск по ключевым словам, авторам, источникам, DOI...",
     "found": "Найдено",
     "table": "Таблица",
     "cards": "Карточки",
-    "filters": "Фильтры",
-    "yearFrom": "Год от",
-    "yearTo": "Год до",
-    "issn": "ISSN",
-    "quartile": "Квартиль",
-    "citFrom": "Цит. от",
     "citTo": "Цит. до",
     "percFrom": "Перцен. от",
     "percTo": "Перцен. до",
@@ -28,16 +23,22 @@
     "apply": "Применить",
     "reset": "Сброс",
     "exportCsv": "Экспорт CSV",
+    "exportXlsx": "Экспорт XLSX",
     "links": "Ссылки (Scopus/DOI)",
     "citations": "Цит.",
-    "perc2024": "Perc. 2024"
+    "perc2024": "Perc. 2024",
+    "pageSize": "На странице",
+    "language": "Язык",
+    "languageAll": "Все",
+    "faculty": "Факультет",
+    "facultyAll": "Все",
+    "facultyUnassigned": "Без привязки",
+    "docType": "Тип публикации",
+    "actions": "Действия"
   },
-  "stats": {
-    "title": "Статистика",
-    "kpiPublications": "Публикации",
-    "kpiAuthors": "Авторы",
-    "kpiSources": "Источники",
-    "kpiAvg": "Среднее на автора",
+  "articles": {
+    "title": "Статьи",
+    "authorsFacet": "Авторы (Статьи)",
     "yearly": "По годам",
     "topAuthors": "Топ-авторы",
     "topSources": "Топ-источники",
@@ -105,5 +106,36 @@
     "loggedAs": "Вы вошли как:",
     "prev": "Назад",
     "next": "Вперёд"
+  },
+  "users": {
+    "title": "Пользователи",
+    "source": "Источник",
+    "sourceAdmin": "admin",
+    "count": "Количество",
+    "sortName Asc": "Имя A–Я",
+    "sortNameDesc": "Имя Я–A",
+    "table": "Таблица",
+    "cards": "Карточки",
+    "refresh": "Обновить",
+    "addUser": "Добавить пользователя",
+    "exportXlsx": "Экспорт XLSX",
+    "pageSize": "На странице",
+    "headers": {
+      "id": "ID",
+      "login": "Логин",
+      "fullName": "ФИО",
+      "role": "Роль",
+      "position": "Должность",
+      "faculty": "Факультет",
+      "publications": "Публикаций",
+      "status": "Статус",
+      "actions": "Действия"
+    }
+  },
+  "loginPage": {
+    "title": "Вход",
+    "username": "Логин",
+    "password": "Пароль",
+    "signIn": "Войти"
   }
 }
